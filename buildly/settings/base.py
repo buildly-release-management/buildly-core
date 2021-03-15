@@ -43,6 +43,7 @@ INSTALLED_APPS_THIRD_PARTIES = [
 
     # Social auth
     'social_django',
+    'rest_social_auth',
 
     # OAuth2
     'oauth2_provider',

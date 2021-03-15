@@ -47,12 +47,18 @@ def oauth_complete(request, backend, *args, **kwargs):
         raise SocialAuthFailed('Authorization code has to be provided.')
 
     request.backend.data['code'] = code
+    print("request.backend.data['code'] = code",request.backend.data['code'])
+
     is_authenticated = user_is_authenticated(request.user)
+    print("is_authenticated",is_authenticated)
     user = request.user if is_authenticated else None
+    print("user",user)
 
     partial = partial_pipeline_data(request.backend, user, *args, **kwargs)
+    print("partial",partial)
     if partial:
         user = request.backend.continue_pipeline(partial)
+        print("partial-->user",user)
         # clean partial data after usage
         request.backend.strategy.clean_partial_pipeline(partial.token)
     else:
@@ -64,6 +70,7 @@ def oauth_complete(request, backend, *args, **kwargs):
 
         # prepare request to validate code
         data = request.backend.strategy.request_data()
+        print("data",data)
         data['code'] = code
         redirect_uri = settings.SOCIAL_AUTH_LOGIN_REDIRECT_URLS.get(backend)
         request.backend.redirect_uri = redirect_uri
@@ -79,6 +86,7 @@ def oauth_complete(request, backend, *args, **kwargs):
     if is_authenticated:
         # generate JWT/Bearer Token
         tokens = generate_access_tokens(request, user)
+        print("tokens",tokens)
         return JsonResponse(data=tokens, status=200)
     elif user:
         if user_is_active(user):

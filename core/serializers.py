@@ -1,8 +1,9 @@
 import jwt
 import secrets
-
+import requests
 from urllib.parse import urljoin
-
+import os
+from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth import password_validation
 from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
@@ -18,6 +19,8 @@ from core.email_utils import send_email, send_email_body
 
 from core.models import CoreUser, CoreGroup, EmailTemplate, LogicModule, Organization, PERMISSIONS_ORG_ADMIN, \
     TEMPLATE_RESET_PASSWORD
+
+from .register import register_social_user
 
 
 class LogicModuleSerializer(serializers.ModelSerializer):
@@ -278,3 +281,30 @@ class ApplicationSerializer(serializers.ModelSerializer):
         validated_data['client_id'] = secrets.token_urlsafe(75)
         validated_data['client_secret'] = secrets.token_urlsafe(190)
         return super(ApplicationSerializer, self).create(validated_data)
+
+
+class GithubSocialAuthSerializer(serializers.Serializer):
+    access_token = serializers.CharField(required=False)
+    token_type = serializers.CharField(required=False)
+
+    def validate_access_token(self, access_token):
+        url = "https://api.github.com/user"
+        user_data = requests.get(url, headers={'Authorization': 'token'+ access_token})
+        try:
+            user_data['sub']
+        except:
+            raise serializers.ValidationError(
+                'The token is invalid or expired. Please login again.'
+            )
+
+        if user_data['aud'] != os.environ.get('GITHUB_CLIENT_ID'):
+
+            raise AuthenticationFailed('oops, who are you?')
+
+        user_id = user_data['sub']
+        email = user_data['email']
+        name = user_data['name']
+        provider = 'github'
+
+        return register_social_user(
+            provider=provider, user_id=user_id, email=email, name=name)

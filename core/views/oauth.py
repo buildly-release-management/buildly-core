@@ -1,10 +1,13 @@
+from rest_framework.generics import GenericAPIView
+from core.permissions import IsSuperUser
 from rest_framework import mixins, viewsets
 import django_filters
-
+from django.shortcuts import render
+from django.utils.encoding import smart_str
 from oauth2_provider.models import AccessToken, Application, RefreshToken
 
-from core.serializers import AccessTokenSerializer, ApplicationSerializer, RefreshTokenSerializer
-from core.permissions import IsSuperUser
+from core.serializers import AccessTokenSerializer, ApplicationSerializer, RefreshTokenSerializer,\
+    GithubSocialAuthSerializer
 
 
 class AccessTokenViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
@@ -110,3 +113,49 @@ class RefreshTokenViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     permission_classes = (IsSuperUser,)
     queryset = RefreshToken.objects.all()
     serializer_class = RefreshTokenSerializer
+
+
+"""
+OAUTH FLOW
+1. Request a user's GitHub identity
+GET https://github.com/login/oauth/authorize
+
+2. Users are redirected back to your site by GitHub
+Exchange this code for an access token:
+
+POST https://github.com/login/oauth/access_token
+By default, the response takes the following form:
+
+access_token=e72e16c7e42f292c6912e7710c838347ae178b4a&token_type=bearer
+
+3. Use the access token to access the API
+Authorization: token OAUTH-TOKEN
+GET https://api.github.com/user
+For example, in curl you can set the Authorization header like this:
+
+curl -H "Authorization: token OAUTH-TOKEN" https://api.github.com/user
+"""
+
+
+class GithubSocialAuthView(GenericAPIView):
+
+    serializer_class = GithubSocialAuthSerializer
+
+    def post(self, request):
+        """
+        POST with "access_token" and "token_type"
+        Send an access_token as from github to get user information
+        """
+
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = ((serializer.validated_data)['auth_token'])
+        return Response(data, status=status.HTTP_200_OK)
+
+
+def github_login(request):
+    encoded_client_id = smart_str('076e9a822c235db9057f', encoding='utf-8', strings_only=False, errors='strict')
+    context = {
+        'url': encoded_client_id
+    }
+    return render(request, 'email/index.html', context)
