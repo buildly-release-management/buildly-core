@@ -24,8 +24,7 @@ from core.swagger import (COREUSER_INVITE_RESPONSE, COREUSER_INVITE_CHECK_RESPON
                           DETAIL_RESPONSE, SUCCESS_RESPONSE, TOKEN_QUERY_PARAM)
 from core.jwt_utils import create_invitation_token
 from core.email_utils import send_email
-from dateutil import tz
-from datetime import datetime
+
 
 
 class CoreUserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
