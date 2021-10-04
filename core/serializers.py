@@ -363,5 +363,6 @@ class CoreUserEmailNotificationSerializer(serializers.Serializer):
     Serializer for email Notification
     """
     organization_uuid = serializers.UUIDField()
-    username = serializers.CharField()
     notification_messages = serializers.CharField()
+
+
