@@ -110,11 +110,11 @@ class TestCoreUserCreate:
         assert response.status_code == 201
 
         user = CoreUser.objects.get(username=TEST_USER_DATA['username'])
-        # assert user.email == TEST_USER_DATA['email']
-        # assert user.first_name == TEST_USER_DATA['first_name']
-        # assert user.last_name == TEST_USER_DATA['last_name']
-        # assert user.organization.name == TEST_USER_DATA['organization_name']
-        # assert user.is_active
+        assert user.email == TEST_USER_DATA['email']
+        assert user.first_name == TEST_USER_DATA['first_name']
+        assert user.last_name == TEST_USER_DATA['last_name']
+        assert user.organization.name == TEST_USER_DATA['organization_name']
+        assert user.is_active
 
         # check this user is org admin
         assert user.is_org_admin
