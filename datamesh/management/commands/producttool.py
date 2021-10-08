@@ -6,7 +6,7 @@ import re
 
 def product_tool_users_relationship():
     """
-     product_tool <-> users - different service model join.
+     product_tool <-> users -  service and core model join.
      Load product_tool with user_uuid from json file and write the data directly into the JoinRecords.
      open json file from data directory in root path.
     """
@@ -19,8 +19,6 @@ def product_tool_users_relationship():
 
     # get logic module from core
     origin_logic_module = LogicModule.objects.get(endpoint_name='product')
-
-    # get or create datamesh Logic Module Model
 
     # get or create datamesh Logic Module Model
     origin_model, _ = LogicModuleModel.objects.get_or_create(
