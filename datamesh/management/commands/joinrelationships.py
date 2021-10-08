@@ -1,11 +1,7 @@
 from django.core.management.base import BaseCommand
-import json
-from datamesh.models import JoinRecord, Relationship, LogicModuleModel
-from core.models import LogicModule
-from .gateway import gateway_custodian_relationship, organization_gateway_relationship
-from .shipment import shipment_gateway_relationship, consortium_shipment_relationship, shipment_item_relationship, \
-    organization_shipment_relationship
-from .custody import custody_shipment_relationship, custodian_custody_relationship
+from datamesh.management.commands.product import product_product_tool_relationship, product_product_team_relationship
+from datamesh.management.commands.producttool import product_tool_users_relationship
+
 
 
 class Command(BaseCommand):
@@ -22,10 +18,13 @@ class Command(BaseCommand):
 
 def run_seed(self, mode):
     """call function here."""
-    """ create a functions for model and call that functions here """
 
-    """shipment"""
+    """product"""
+    product_product_team_relationship()
+    product_product_tool_relationship()
 
-    """shipment_gateway_relationship()"""
+    """product tool"""
+    product_tool_users_relationship()
+
 
 
