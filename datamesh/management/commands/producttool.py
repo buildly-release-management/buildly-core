@@ -1,6 +1,6 @@
 import json
 from datamesh.models import JoinRecord, Relationship, LogicModuleModel
-from core.models import LogicModule, Organization
+from core.models import LogicModule
 import re
 
 
@@ -53,7 +53,6 @@ def product_tool_users_relationship():
 
         # get item ids from model data
         user_uuid = data['fields']['users']
-        # check if shipment_uuid is null or not
         if not user_uuid:
             continue
 
