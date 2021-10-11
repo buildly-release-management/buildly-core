@@ -40,10 +40,10 @@ join_relationship(
     origin_module_lookup_field_name =,
     
     related_module_model =,
-    related_module_endpoint,
+    related_module_endpoint=,
     related_module_lookup_field_name=,
     
-    lookup_field_type = 
+    lookup_field_type = ,
     
     relationship_key_name=,
     field_name=,
@@ -111,7 +111,6 @@ def join_relationship(*args, **kwargs):
 
         # iterate over item_ids
         for field_value in value_list:
-            print('field_value', field_value)
             join_record = join_record_datamesh(
                 relationship=relationship,
                 pk=related_data['pk'],
