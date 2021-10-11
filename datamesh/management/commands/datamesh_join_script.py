@@ -97,7 +97,6 @@ def join_relationship(*args, **kwargs):
 
     # iterate over loaded JSON data
     for related_data in model_data:
-        counter += 1
 
         field_value = related_data['fields'][kwargs.get('field_name')]
 
@@ -105,10 +104,14 @@ def join_relationship(*args, **kwargs):
             continue
 
         # convert uuid string to list
-        uuid_list = re.findall(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){4}[0-9a-f]{8}', field_value)
+        if kwargs.get('related_lookup_field_type') == 'uuid':
+            value_list = re.findall(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){4}[0-9a-f]{8}', field_value)
+        else:
+            value_list = field_value if not kwargs.get('is_list') else json.loads(field_value)
 
         # iterate over item_ids
-        for field_value in uuid_list:
+        for field_value in value_list:
+            print('field_value', field_value)
             join_record = join_record_datamesh(
                 relationship=relationship,
                 pk=related_data['pk'],
@@ -117,9 +120,10 @@ def join_relationship(*args, **kwargs):
                 origin_lookup_field_type=kwargs.get('origin_lookup_field_type'),
                 related_lookup_field_type=kwargs.get('related_lookup_field_type'),
             )
+            counter += 1
 
-        print(join_record)
-        eligible_join_records.append(join_record.pk)
+            print(join_record)
+            eligible_join_records.append(join_record.pk)
 
     print(f'{counter}  parsed and written to the JoinRecords.')
 
