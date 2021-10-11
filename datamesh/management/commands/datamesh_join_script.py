@@ -130,45 +130,36 @@ def join_relationship(*args, **kwargs):
 
 def join_record_datamesh(*args, **kwargs):
     if kwargs.get('origin_lookup_field_type') == 'id' and kwargs.get('related_lookup_field_type') == 'id':
-        join_record, _ = JoinRecord.objects.get_or_create(
-            relationship=kwargs.get('relationship'),
-            record_id=kwargs.get('pk'),
-            related_record_id=kwargs.get('field_value'),
-            defaults={
-                'organization': kwargs.get('organization') if kwargs.get('organization') else None
-            }
-        )
+        metrics = {
+            "record_id": kwargs.get('pk'),
+            "related_record_id": kwargs.get('field_value')
+        }
 
     elif kwargs.get('origin_lookup_field_type') == 'uuid' and kwargs.get('related_lookup_field_type') == 'uuid':
-        join_record, _ = JoinRecord.objects.get_or_create(
-            relationship=kwargs.get('relationship'),
-            record_uuid=kwargs.get('pk'),
-            related_record_uuid=kwargs.get('field_value'),
-            defaults={
-                'organization': kwargs.get('organization') if kwargs.get('organization') else None
-            }
-        )
+        metrics = {
+            "record_uuid": kwargs.get('pk'),
+            "related_record_uuid": kwargs.get('field_value')
+        }
 
     elif kwargs.get('origin_lookup_field_type') == 'uuid' and kwargs.get('related_lookup_field_type') == 'id':
-        join_record, _ = JoinRecord.objects.get_or_create(
-            relationship=kwargs.get('relationship'),
-            record_uuid=kwargs.get('pk'),
-            related_record_id=kwargs.get('field_value'),
-            defaults={
-                'organization': kwargs.get('organization') if kwargs.get('organization') else None
-            }
-        )
+        metrics = {
+            "record_uuid": kwargs.get('pk'),
+            "related_record_id": kwargs.get('field_value')
+        }
 
     elif kwargs.get('origin_lookup_field_type') == 'id' and kwargs.get('related_lookup_field_type') == 'uuid':
-        join_record, _ = JoinRecord.objects.get_or_create(
-            relationship=kwargs.get('relationship'),
-            record_id=kwargs.get('pk'),
-            related_record_uuid=kwargs.get('field_value'),
-            defaults={
-                'organization': kwargs.get('organization') if kwargs.get('organization') else None
-            }
-        )
+        metrics = {
+            "record_id": kwargs.get('pk'),
+            "related_record_uuid": kwargs.get('field_value')
+        }
     else:
-        join_record = None
+        metrics = None
 
+    join_record, _ = JoinRecord.objects.get_or_create(
+        relationship=kwargs.get('relationship'),
+        **metrics,
+        defaults={
+            'organization': kwargs.get('organization') if kwargs.get('organization') else None
+        }
+    )
     return join_record
