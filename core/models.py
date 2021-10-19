@@ -260,3 +260,11 @@ class LogicModule(models.Model):
 
     def __str__(self):
         return str(self.name)
+
+
+class Partner(models.Model):
+    partner_uuid = models.CharField(primary_key=True, max_length=255, default=uuid.uuid4, unique=True)
+    name = models.CharField(blank=True, null=True, max_length=255)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, verbose_name='Organization')
+    create_date = models.DateTimeField(null=True, blank=True)
+    edit_date = models.DateTimeField(null=True, blank=True)
