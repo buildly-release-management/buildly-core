@@ -367,6 +367,8 @@ class CoreUserEmailNotificationSerializer(serializers.Serializer):
 
 
 class PartnerSerializer(serializers.ModelSerializer):
+    partner_uuid = serializers.ReadOnlyField()
+
     class Meta:
         model = Partner
         fields = '__all__'

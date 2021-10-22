@@ -85,13 +85,18 @@ class Organization(models.Model):
     When organization is created two CoreGroups are created automatically: Admins group and default Users group.
     """
     organization_uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, verbose_name='Organization UUID')
-    name = models.CharField("Organization Name", max_length=255, blank=True, help_text="Each end user must be grouped into an organization")
-    description = models.TextField("Description/Notes", max_length=765, null=True, blank=True, help_text="Description of organization")
-    organization_url = models.CharField(blank=True, null=True, max_length=255, help_text="Link to organizations external web site")
-    industries = models.ManyToManyField(Industry, blank=True, related_name='organizations', help_text="Type of Industry the organization belongs to if any")
+    name = models.CharField("Organization Name", max_length=255, blank=True,
+                            help_text="Each end user must be grouped into an organization")
+    description = models.TextField("Description/Notes", max_length=765, null=True, blank=True,
+                                   help_text="Description of organization")
+    organization_url = models.CharField(blank=True, null=True, max_length=255,
+                                        help_text="Link to organizations external web site")
+    industries = models.ManyToManyField(Industry, blank=True, related_name='organizations',
+                                        help_text="Type of Industry the organization belongs to if any")
     create_date = models.DateTimeField(null=True, blank=True)
     edit_date = models.DateTimeField(null=True, blank=True)
-    oauth_domains = ArrayField(models.CharField("OAuth Domains", max_length=255, null=True, blank=True), null=True, blank=True)
+    oauth_domains = ArrayField(models.CharField("OAuth Domains", max_length=255, null=True, blank=True), null=True,
+                               blank=True)
     date_format = models.CharField("Date Format", max_length=50, blank=True, default="DD.MM.YYYY")
     phone = models.CharField(max_length=20, blank=True, null=True)
 
@@ -137,11 +142,13 @@ class CoreGroup(models.Model):
     """
     uuid = models.CharField('CoreGroup UUID', max_length=255, default=uuid.uuid4, unique=True)
     name = models.CharField('Name of the role', max_length=80)
-    organization = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.CASCADE, help_text='Related Org to associate with')
+    organization = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.CASCADE,
+                                     help_text='Related Org to associate with')
     is_global = models.BooleanField('Is global group', default=False)
     is_org_level = models.BooleanField('Is organization level group', default=False)
     is_default = models.BooleanField('Is organization default group', default=False)
-    permissions = models.PositiveSmallIntegerField('Permissions', default=PERMISSIONS_VIEW_ONLY, help_text='Decimal integer from 0 to 15 converted from 4-bit binary, each bit indicates permissions for CRUD')
+    permissions = models.PositiveSmallIntegerField('Permissions', default=PERMISSIONS_VIEW_ONLY,
+                                                   help_text='Decimal integer from 0 to 15 converted from 4-bit binary, each bit indicates permissions for CRUD')
     create_date = models.DateTimeField(default=timezone.now)
     edit_date = models.DateTimeField(null=True, blank=True)
 
@@ -173,8 +180,10 @@ class CoreUser(AbstractUser):
     core_user_uuid = models.CharField(max_length=255, verbose_name='CoreUser UUID', default=uuid.uuid4, unique=True)
     title = models.CharField(blank=True, null=True, max_length=3, choices=TITLE_CHOICES)
     contact_info = models.CharField(blank=True, null=True, max_length=255)
-    organization = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.CASCADE, help_text='Related Org to associate with')
-    core_groups = models.ManyToManyField(CoreGroup, verbose_name='User groups', blank=True, related_name='user_set', related_query_name='user')
+    organization = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.CASCADE,
+                                     help_text='Related Org to associate with')
+    core_groups = models.ManyToManyField(CoreGroup, verbose_name='User groups', blank=True, related_name='user_set',
+                                         related_query_name='user')
     privacy_disclaimer_accepted = models.BooleanField(default=False)
     create_date = models.DateTimeField(default=timezone.now)
     edit_date = models.DateTimeField(null=True, blank=True)
@@ -220,14 +229,15 @@ class EmailTemplate(models.Model):
     """
     Stores e-mail templates specific to organization
     """
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, verbose_name='Organization', help_text='Related Org to associate with')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, verbose_name='Organization',
+                                     help_text='Related Org to associate with')
     subject = models.CharField('Subject', max_length=255)
     type = models.PositiveSmallIntegerField('Type of template', choices=TEMPLATE_TYPES)
     template = models.TextField("Reset password e-mail template (text)", null=True, blank=True)
     template_html = models.TextField("Reset password e-mail template (HTML)", null=True, blank=True)
 
     class Meta:
-        unique_together = ('organization', 'type', )
+        unique_together = ('organization', 'type',)
         verbose_name = "Email Template"
         verbose_name_plural = "Email Templates"
 
@@ -243,7 +253,8 @@ class LogicModule(models.Model):
     endpoint_name = models.CharField(blank=True, null=True, max_length=255)
     docs_endpoint = models.CharField(blank=True, null=True, max_length=255)
     api_specification = JSONField(blank=True, null=True)
-    core_groups = models.ManyToManyField(CoreGroup, verbose_name='Logic Module groups', blank=True, related_name='logic_module_set', related_query_name='logic_module')
+    core_groups = models.ManyToManyField(CoreGroup, verbose_name='Logic Module groups', blank=True,
+                                         related_name='logic_module_set', related_query_name='logic_module')
     create_date = models.DateTimeField(null=True, blank=True)
     edit_date = models.DateTimeField(null=True, blank=True)
 
@@ -263,8 +274,7 @@ class LogicModule(models.Model):
 
 
 class Partner(models.Model):
-    partner_uuid = models.CharField(primary_key=True, max_length=255, default=uuid.uuid4, unique=True)
+    partner_uuid = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4, editable=False)
     name = models.CharField(blank=True, null=True, max_length=255)
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, verbose_name='Organization')
     create_date = models.DateTimeField(null=True, blank=True)
     edit_date = models.DateTimeField(null=True, blank=True)
