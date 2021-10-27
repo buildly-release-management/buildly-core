@@ -10,8 +10,6 @@ from core.views import PartnerViewSet
 client = Client()
 
 
-#
-#
 class GetAllPartnerTest(TestCase):
     """ Test module for GET all events API """
 
@@ -91,8 +89,6 @@ class UpdatePartnerTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
-#
-#
 class DeleteSinglePartnerTest(TestCase):
     """ Test module for deleting an existing partner record """
 
