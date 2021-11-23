@@ -43,7 +43,7 @@ class BaseSwaggerClient:
             pk_name = 'uuid' if utils.valid_uuid4(pk) else 'id'
 
             # update path kwargs key name
-            # example: {"feature_uuid" :"db827034-30bb-4062-ac35-f8c24e8f81ad"}
+            # example: {"product_uuid" :"db827034-30bb-4062-ac35-f8c24e8f81ad"}
             path_kwargs = {f'{model}_{pk_name}': pk}
 
             # create path for retrieving individual data example : /product/{{product_uuid}}/
