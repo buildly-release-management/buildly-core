@@ -185,6 +185,7 @@ class CoreUser(AbstractUser):
     create_date = models.DateTimeField(default=timezone.now)
     edit_date = models.DateTimeField(null=True, blank=True)
     user_type = models.CharField(blank=True, null=True, max_length=50, choices=USER_TYPE_CHOICES)
+    survey_status = models.BooleanField(default=False)
 
     class Meta:
         ordering = ('first_name',)
