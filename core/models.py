@@ -141,7 +141,8 @@ class CoreGroup(models.Model):
     is_global = models.BooleanField('Is global group', default=False)
     is_org_level = models.BooleanField('Is organization level group', default=False)
     is_default = models.BooleanField('Is organization default group', default=False)
-    permissions = models.PositiveSmallIntegerField('Permissions', default=PERMISSIONS_VIEW_ONLY, help_text='Decimal integer from 0 to 15 converted from 4-bit binary, each bit indicates permissions for CRUD')
+    permissions = models.PositiveSmallIntegerField('Permissions', default=PERMISSIONS_VIEW_ONLY,
+                                                   help_text='Decimal integer from 0 to 15 converted from 4-bit binary, each bit indicates permissions for CRUD')
     create_date = models.DateTimeField(default=timezone.now)
     edit_date = models.DateTimeField(null=True, blank=True)
 
@@ -170,6 +171,11 @@ class CoreUser(AbstractUser):
         ('ms', 'Ms.'),
     )
 
+    USER_TYPE_CHOICES = (
+        ('Developer', 'Developer'),
+        ('Product Team', 'Product Team'),
+    )
+
     core_user_uuid = models.CharField(max_length=255, verbose_name='CoreUser UUID', default=uuid.uuid4, unique=True)
     title = models.CharField(blank=True, null=True, max_length=3, choices=TITLE_CHOICES)
     contact_info = models.CharField(blank=True, null=True, max_length=255)
@@ -178,6 +184,7 @@ class CoreUser(AbstractUser):
     privacy_disclaimer_accepted = models.BooleanField(default=False)
     create_date = models.DateTimeField(default=timezone.now)
     edit_date = models.DateTimeField(null=True, blank=True)
+    user_type = models.CharField(blank=True, null=True, max_length=50, choices=USER_TYPE_CHOICES)
 
     class Meta:
         ordering = ('first_name',)
@@ -227,7 +234,7 @@ class EmailTemplate(models.Model):
     template_html = models.TextField("Reset password e-mail template (HTML)", null=True, blank=True)
 
     class Meta:
-        unique_together = ('organization', 'type', )
+        unique_together = ('organization', 'type',)
         verbose_name = "Email Template"
         verbose_name_plural = "Email Templates"
 
