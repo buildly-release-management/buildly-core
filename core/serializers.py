@@ -161,10 +161,12 @@ class CoreUserProfileSerializer(serializers.Serializer):
     contact_info = serializers.CharField(required=False)
     password = serializers.CharField(required=False)
     organization_name = serializers.CharField(required=False)
+    user_type = serializers.CharField(required=False)
+    survey_status = serializers.BooleanField(required=False)
 
     class Meta:
         model = CoreUser
-        fields = ('first_name', 'last_name', 'password', 'title', 'contact_info', 'organization_name',)
+        fields = ('first_name', 'last_name', 'password', 'title', 'contact_info', 'organization_name', 'user_type', 'survey_status')
 
     def update(self, instance, validated_data):
 
