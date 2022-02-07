@@ -170,7 +170,7 @@ class CoreUserProfileSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
 
-        organization_name = validated_data.pop('organization_name')
+        organization_name = validated_data.pop('organization_name', None)
 
         name = Organization.objects.filter(name=organization_name).first()
         if name is not None:
