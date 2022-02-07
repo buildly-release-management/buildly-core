@@ -259,8 +259,6 @@ class CoreUserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
             if self.action in ['update', 'partial_update', 'invite']:
                 return [AllowOnlyOrgAdmin(), IsOrgMember()]
-            if self.action in ['invite']:
-                return [AllowOnlyOrgAdmin(), IsOrgMember()]
 
         return super(CoreUserViewSet, self).get_permissions()
 
