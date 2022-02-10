@@ -352,12 +352,16 @@ class CoreUserUpdateOrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CoreUser
         fields = ('id', 'core_user_uuid', 'first_name', 'last_name', 'email', 'username', 'is_active', 'title',
-                  'contact_info', 'privacy_disclaimer_accepted', 'organization_name', 'organization', 'core_groups',)
+                  'contact_info', 'privacy_disclaimer_accepted', 'organization_name', 'organization', 'core_groups',
+                  'user_type', 'survey_status')
 
     def update(self, instance, validated_data):
 
         organization_name = str(validated_data.pop('organization_name')).lower()
         instance.email = validated_data.get('email', instance.email)
+        instance.user_type = validated_data.get('user_type', instance.user_type)
+        instance.survey_status = validated_data.get('survey_status', instance.survey_status)
+
         if instance.email is not None:
             instance.save()
         is_new_org = Organization.objects.filter(name=organization_name)
