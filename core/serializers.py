@@ -116,7 +116,6 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         read_only_fields = CoreUserSerializer.Meta.read_only_fields
 
     def create(self, validated_data):
-
         # get or create organization
         organization = validated_data.pop('organization')
         org_name = organization['name']
@@ -130,7 +129,6 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         else:
             invitation_token = validated_data.pop('invitation_token', None)
             validated_data['is_active'] = is_new_org or bool(invitation_token)
-
         coreuser = CoreUser.objects.create(
             organization=organization,
             **validated_data
