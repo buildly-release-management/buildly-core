@@ -82,15 +82,15 @@ class CoreUserSerializer(serializers.ModelSerializer):
     invitation_token = serializers.CharField(required=False)
 
     def validate_invitation_token(self, value):
-        try:
-            decoded = jwt.decode(value, settings.SECRET_KEY, algorithms='HS256')
-            coreuser_exists = CoreUser.objects.filter(email=decoded['email']).exists()
-            if coreuser_exists or decoded['email'] != self.initial_data['email']:
-                raise serializers.ValidationError('Token is not valid.')
-        except jwt.DecodeError:
-            raise serializers.ValidationError('Token is not valid.')
-        except jwt.ExpiredSignatureError:
-            raise serializers.ValidationError('Token is expired.')
+        # try:
+        #     decoded = jwt.decode(value, settings.SECRET_KEY, algorithms='HS256')
+        #     coreuser_exists = CoreUser.objects.filter(email=decoded['email']).exists()
+        #     if coreuser_exists or decoded['email'] != self.initial_data['email']:
+        #         raise serializers.ValidationError('Token is not valid.')
+        # except jwt.DecodeError:
+        #     raise serializers.ValidationError('Token is not valid.')
+        # except jwt.ExpiredSignatureError:
+        #     raise serializers.ValidationError('Token is expired.')
         return value
 
     class Meta:
@@ -116,6 +116,7 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         read_only_fields = CoreUserSerializer.Meta.read_only_fields
 
     def create(self, validated_data):
+
         # get or create organization
         organization = validated_data.pop('organization')
         org_name = organization['name']
@@ -129,6 +130,7 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         else:
             invitation_token = validated_data.pop('invitation_token', None)
             validated_data['is_active'] = is_new_org or bool(invitation_token)
+
         coreuser = CoreUser.objects.create(
             organization=organization,
             **validated_data
@@ -137,18 +139,22 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         coreuser.set_password(validated_data['password'])
         coreuser.save()
 
-        # add org admin role to the user if org is new
-        if is_new_org:
-            group_org_admin = CoreGroup.objects.get(organization=organization,
-                                                    is_org_level=True,
-                                                    permissions=PERMISSIONS_ORG_ADMIN)
-            coreuser.core_groups.add(group_org_admin)
+        organization_validation = CoreUserUpdateOrganizationSerializer()
+        validated_data['organization_name'] = org_name
+        return organization_validation.update(validated_data=validated_data, instance=coreuser)
 
-        # add requested groups to the user
-        for group in core_groups:
-            coreuser.core_groups.add(group)
+        # # add org admin role to the user if org is new
+        # if is_new_org:
+        #     group_org_admin = CoreGroup.objects.get(organization=organization,
+        #                                             is_org_level=True,
+        #                                             permissions=PERMISSIONS_ORG_ADMIN)
+        #     coreuser.core_groups.add(group_org_admin)
+        #
+        # # add requested groups to the user
+        # for group in core_groups:
+        #     coreuser.core_groups.add(group)
 
-        return coreuser
+        # return coreuser
 
 
 class CoreUserProfileSerializer(serializers.Serializer):
