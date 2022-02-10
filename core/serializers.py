@@ -364,18 +364,18 @@ class CoreUserUpdateOrganizationSerializer(serializers.ModelSerializer):
 
         # check whether org_name is "default"
         if organization_name == 'default':
-            default_org = Organization.objects.filter(name='Default Organization').first()
+            default_org = Organization.objects.filter(name='default organization').first()
             instance.organization = default_org
             instance.save()
             # now attach the user role as USER to default organization
-            default_org_user = CoreGroup.objects.filter(organization__name='Default Organization',
+            default_org_user = CoreGroup.objects.filter(organization__name='default organization',
                                                         is_org_level=True,
                                                         permissions=PERMISSIONS_VIEW_ONLY).first()
             instance.core_groups.add(default_org_user)
 
             # remove any other group permissions he is not added
             for single_group in instance.core_groups.all():
-                default_org_groups = CoreGroup.objects.filter(organization__name='Default Organization',
+                default_org_groups = CoreGroup.objects.filter(organization__name='default organization',
                                                               is_org_level=True,
                                                               permissions=PERMISSIONS_VIEW_ONLY)
                 if single_group not in default_org_groups:
