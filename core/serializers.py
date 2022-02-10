@@ -82,15 +82,15 @@ class CoreUserSerializer(serializers.ModelSerializer):
     invitation_token = serializers.CharField(required=False)
 
     def validate_invitation_token(self, value):
-        # try:
-        #     decoded = jwt.decode(value, settings.SECRET_KEY, algorithms='HS256')
-        #     coreuser_exists = CoreUser.objects.filter(email=decoded['email']).exists()
-        #     if coreuser_exists or decoded['email'] != self.initial_data['email']:
-        #         raise serializers.ValidationError('Token is not valid.')
-        # except jwt.DecodeError:
-        #     raise serializers.ValidationError('Token is not valid.')
-        # except jwt.ExpiredSignatureError:
-        #     raise serializers.ValidationError('Token is expired.')
+        try:
+            decoded = jwt.decode(value, settings.SECRET_KEY, algorithms='HS256')
+            coreuser_exists = CoreUser.objects.filter(email=decoded['email']).exists()
+            if coreuser_exists or decoded['email'] != self.initial_data['email']:
+                raise serializers.ValidationError('Token is not valid.')
+        except jwt.DecodeError:
+            raise serializers.ValidationError('Token is not valid.')
+        except jwt.ExpiredSignatureError:
+            raise serializers.ValidationError('Token is expired.')
         return value
 
     class Meta:
