@@ -139,22 +139,35 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         coreuser.set_password(validated_data['password'])
         coreuser.save()
 
-        organization_validation = CoreUserUpdateOrganizationSerializer()
-        validated_data['organization_name'] = org_name
-        return organization_validation.update(validated_data=validated_data, instance=coreuser)
+        # check whether org_name is "default"
+        if org_name in ['default']:
+            default_org_user = CoreGroup.objects.filter(organization__name='default organization',
+                                                        is_org_level=True,
+                                                        permissions=PERMISSIONS_VIEW_ONLY).first()
+            coreuser.core_groups.add(default_org_user)
 
-        # # add org admin role to the user if org is new
-        # if is_new_org:
-        #     group_org_admin = CoreGroup.objects.get(organization=organization,
-        #                                             is_org_level=True,
-        #                                             permissions=PERMISSIONS_ORG_ADMIN)
-        #     coreuser.core_groups.add(group_org_admin)
-        #
-        # # add requested groups to the user
-        # for group in core_groups:
-        #     coreuser.core_groups.add(group)
+        # check whether an old organization
+        if not is_new_org:
+            coreuser.is_active = False
+            coreuser.save()
 
-        # return coreuser
+            org_user = CoreGroup.objects.filter(organization__name=organization,
+                                                is_org_level=True,
+                                                permissions=PERMISSIONS_VIEW_ONLY).first()
+            coreuser.core_groups.add(org_user)
+
+        # add org admin role to the user if org is new
+        if is_new_org:
+            group_org_admin = CoreGroup.objects.get(organization=organization,
+                                                    is_org_level=True,
+                                                    permissions=PERMISSIONS_ORG_ADMIN)
+            coreuser.core_groups.add(group_org_admin)
+
+        # add requested groups to the user
+        for group in core_groups:
+            coreuser.core_groups.add(group)
+
+        return coreuser
 
 
 class CoreUserProfileSerializer(serializers.Serializer):
