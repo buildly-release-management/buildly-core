@@ -33,7 +33,13 @@ def run_seed(self, mode):
 
         related_module_model='ThirdPartyTool',
         related_module_endpoint='/thirdpartytool/',
-        related_module_lookup_field_name='third_party_tool_uuid',
+        related_module_lookup_field_name='thirdpartytool_uuid',
+
+        origin_lookup_field_name='product_uuid',
+        related_lookup_field_name='thirdpartytool_uuid',
+
+        origin_fk_field_name='third_party_tool',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -60,7 +66,13 @@ def run_seed(self, mode):
 
         related_module_model='ProductTeam',
         related_module_endpoint='/productteam/',
-        related_module_lookup_field_name='product_team_uuid',
+        related_module_lookup_field_name='productteam_uuid',
+
+        origin_lookup_field_name='product_uuid',
+        related_lookup_field_name='thirdpartytool_uuid',
+
+        origin_fk_field_name='third_party_tool',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -90,6 +102,12 @@ def run_seed(self, mode):
         related_module_endpoint='/product/',
         related_module_lookup_field_name='product_uuid',
 
+        origin_lookup_field_name='credential_uuid',
+        related_lookup_field_name='product_uuid',
+
+        origin_fk_field_name='product_uuid',
+        related_fk_field_name=None,
+
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
 
@@ -117,6 +135,12 @@ def run_seed(self, mode):
         related_module_model='Product',
         related_module_endpoint='/product/',
         related_module_lookup_field_name='product_uuid',
+
+        origin_lookup_field_name='release_uuid',
+        related_lookup_field_name='product_uuid',
+
+        origin_fk_field_name='product_uuid',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -174,6 +198,12 @@ def run_seed(self, mode):
         related_module_endpoint='/devteam/',
         related_module_lookup_field_name='devteam_uuid',
 
+        origin_lookup_field_name='release_uuid',
+        related_lookup_field_name='devteam_uuid',
+
+        origin_fk_field_name='dev_team_uuid',
+        related_fk_field_name=None,
+
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
 
@@ -204,6 +234,12 @@ def run_seed(self, mode):
         related_module_endpoint='/feature/',
         related_module_lookup_field_name='feature_uuid',
 
+        origin_lookup_field_name='decision_uuid',
+        related_lookup_field_name='feature_uuid',
+
+        origin_fk_field_name='feature',
+        related_fk_field_name=None,
+
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
 
@@ -231,6 +267,12 @@ def run_seed(self, mode):
         related_module_model='Issue',
         related_module_endpoint='/issue/',
         related_module_lookup_field_name='issue_uuid',
+
+        origin_lookup_field_name='decision_uuid',
+        related_lookup_field_name='issue_uuid',
+
+        origin_fk_field_name='issue',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -316,6 +358,12 @@ def run_seed(self, mode):
         related_module_endpoint='/status/',
         related_module_lookup_field_name='status_uuid',
 
+        origin_lookup_field_name='feature_uuid',
+        related_lookup_field_name='status_uuid',
+
+        origin_fk_field_name='status',
+        related_fk_field_name=None,
+
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
 
@@ -343,6 +391,12 @@ def run_seed(self, mode):
         related_module_model='Feature',
         related_module_endpoint='/feature/',
         related_module_lookup_field_name='feature_uuid',
+
+        origin_lookup_field_name='issue_uuid',
+        related_lookup_field_name='feature_uuid',
+
+        origin_fk_field_name='feature_uuid',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -372,6 +426,12 @@ def run_seed(self, mode):
         related_module_endpoint='/status/',
         related_module_lookup_field_name='status_uuid',
 
+        origin_lookup_field_name='issue_uuid',
+        related_lookup_field_name='status_uuid',
+
+        origin_fk_field_name='status',
+        related_fk_field_name=None,
+
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
 
@@ -399,6 +459,12 @@ def run_seed(self, mode):
         related_module_model='Issue',
         related_module_endpoint='/issue/',
         related_module_lookup_field_name='issue_uuid',
+
+        origin_lookup_field_name='feedback_uuid',
+        related_lookup_field_name='issue_uuid',
+
+        origin_fk_field_name='issue',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -428,6 +494,12 @@ def run_seed(self, mode):
         related_module_endpoint='/feature/',
         related_module_lookup_field_name='feature_uuid',
 
+        origin_lookup_field_name='feedback_uuid',
+        related_lookup_field_name='feature_uuid',
+
+        origin_fk_field_name='feature',
+        related_fk_field_name=None,
+
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
 
@@ -455,6 +527,12 @@ def run_seed(self, mode):
         related_module_model='TimeSheet',
         related_module_endpoint='/timesheet/',
         related_module_lookup_field_name='timesheet_uuid',
+
+        origin_lookup_field_name='timesheethour_uuid',
+        related_lookup_field_name='timesheet_uuid',
+
+        origin_fk_field_name='timesheet_uuid',
+        related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',

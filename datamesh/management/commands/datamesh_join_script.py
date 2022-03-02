@@ -143,7 +143,10 @@ def prepare_relation(*args, **kwargs):
     relationship, _ = Relationship.objects.get_or_create(
         origin_model=origin_model,
         related_model=related_model,
-        key=str(kwargs.get('relationship_key_name'))
+        key=str(kwargs.get('relationship_key_name')),
+        origin_lookup_field_name=kwargs.get('origin_lookup_field_name'),
+        related_lookup_field_name=kwargs.get('related_lookup_field_name'),
+        origin_fk_field_name=kwargs.get('origin_fk_field_name'),
     )
     return relationship, _
 
