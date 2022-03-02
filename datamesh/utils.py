@@ -3,6 +3,7 @@ from typing import Tuple
 from django.db.models import Q
 
 from datamesh.models import Relationship, JoinRecord, LogicModuleModel
+from gateway.utils import valid_uuid4
 
 
 def prepare_lookup_kwargs(is_forward_lookup: bool,
@@ -31,10 +32,11 @@ def validate_join(record_uuid: [str, int], related_record_uuid: [str, int], rela
 def join_record(relationship: str, origin_model_pk: [str, int], related_model_pk: [str, int], organization: [str, any]) -> None:
     """This function will create datamesh join"""
 
+    pk_dict = validate_primary_key(origin_model_pk=origin_model_pk, related_model_pk=related_model_pk)
+
     JoinRecord.objects.create(
         relationship=Relationship.objects.filter(key=relationship).first(),
-        record_uuid=origin_model_pk,
-        related_record_uuid=related_model_pk,
+        **pk_dict,
         organization_id=organization
     )
 
@@ -49,3 +51,33 @@ def delete_join_record(pk: [str, int], previous_pk: [str, int]):
 
     if pk and not previous_pk:
         return pk_query_set.delete()
+
+
+def validate_primary_key(origin_model_pk: [str, int], related_model_pk: [str, int]):
+
+    origin_pk_type = 'uuid' if valid_uuid4(origin_model_pk) else 'id'
+    related_pk_type = 'uuid' if valid_uuid4(related_model_pk) else 'id'
+
+    if origin_pk_type == 'id' and related_pk_type == 'id':
+        return {
+            "record_id": origin_model_pk,
+            "related_record_id": related_model_pk
+        }
+
+    elif origin_pk_type == 'uuid' and related_pk_type == 'uuid':
+        return {
+            "record_uuid": origin_model_pk,
+            "related_record_uuid": related_model_pk
+        }
+
+    elif origin_pk_type == 'uuid' and related_pk_type == 'id':
+        return {
+            "record_uuid": origin_model_pk,
+            "related_record_id": related_model_pk
+        }
+
+    elif origin_pk_type == 'id' and related_pk_type == 'uuid':
+        return {
+            "record_id": origin_model_pk,
+            "related_record_uuid": related_model_pk
+        }
