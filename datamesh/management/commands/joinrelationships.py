@@ -69,9 +69,9 @@ def run_seed(self, mode):
         related_module_lookup_field_name='productteam_uuid',
 
         origin_lookup_field_name='product_uuid',
-        related_lookup_field_name='thirdpartytool_uuid',
+        related_lookup_field_name='product_team_uuid',
 
-        origin_fk_field_name='third_party_tool',
+        origin_fk_field_name='product_team',
         related_fk_field_name=None,
 
         origin_lookup_field_type='uuid',

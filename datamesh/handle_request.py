@@ -33,7 +33,7 @@ class RequestHandler:
 
         # update the created object reference to request_relationship_data
         if self.request.method in ['POST'] and 'join' in self.query_params:
-            return self.prepare_create_request(relationship=relationship)
+            self.prepare_create_request(relationship=relationship)
 
         # for the PUT/PATCH request update PK in request param
         if self.request.method in ['PUT', 'PATCH'] and 'join' in self.query_params:
@@ -44,6 +44,7 @@ class RequestHandler:
         self.perform_request(relationship=relationship, relation_data=self.relation_data)
 
     def prepare_create_request(self, relationship: str):
+
         pk = self.resp_data.get(self.origin_model_pk_name) if self.resp_data.get(self.origin_model_pk_name, None) else self.resp_data.get(self.related_model_pk_name, None)
         key_name = self.origin_fk_name if self.origin_fk_name in self.relation_data.data.keys() else self.related_fk_name
 
@@ -54,6 +55,15 @@ class RequestHandler:
             return
 
     def prepare_update_request(self, relationship: str):
+        """
+        Datamesh update request have the following cases:
+        1.If the UUID/ID(pk) haven’t been sent for the relation PUT request data in this case datamesh is creating
+        that object and join
+        2.If the UUID/ID(pk)  is present in the relation data then we're performing the original request i.e PUT or PATCH
+        3.The relation that only needs to update ID or UUID: for some relation we don't need to perform CRUD operation we're always
+        going to update the reference(pk) in other model
+        """
+
         # assuming if request doesn't have pk then data needed to be created
         pk_name = list(self.relationship_data.data.keys())[0]
 
@@ -67,6 +77,7 @@ class RequestHandler:
             pk, res_pk = None, None
 
         if not pk:
+            """case 1"""
             # Note : Not updating fk reference considering when we're updating we have it already on request relation data
             reference_field_name = self.origin_fk_name if self.origin_fk_name in self.relationship_data.data.keys() else self.related_fk_name
             if reference_field_name in self.relationship_data.data.keys():
@@ -74,12 +85,18 @@ class RequestHandler:
                 self.request_param[relationship]['pk'], self.request.method = None, 'POST'
                 self.relationship_data.data[reference_field_name] = pk
         else:
+            """case 2"""
             # update the request and param method here we are keeping original request in
             # request_method considering for above condition request method might be updated
             self.request.method, self.request_param[relationship]['method'] = self.request_method, self.request_method
             self.request_param[relationship]['pk'] = pk
 
+            """case 3"""
             if ("join" and "previous_pk") in self.relationship_data.data:
+                # identify which is origin pk and related pk and up
+                if not self.relationship_data.data['is_forward_lookup']:
+                    res_pk, pk = pk, res_pk
+
                 # delete join record
                 delete_join_record(pk=res_pk, previous_pk=self.relationship_data.data['previous_pk'])
 

@@ -44,9 +44,13 @@ def join_record(relationship: str, origin_model_pk: [str, int], related_model_pk
 def delete_join_record(pk: [str, int], previous_pk: [str, int]):
     pk_query_set = JoinRecord.objects.filter(Q(record_uuid__icontains=pk) | Q(related_record_uuid__icontains=pk)
                                              | Q(record_id__icontains=pk) | Q(related_record_id__icontains=pk))
+
     if previous_pk and pk:
-        pk_query_set.filter(record_uuid=pk, related_record_uuid=previous_pk).delete()
-        pk_query_set.filter(record_uuid=previous_pk, related_record_uuid=pk).delete()
+        pk_dict = validate_primary_key(origin_model_pk=pk, related_model_pk=previous_pk)
+        pk_query_set.filter(**pk_dict).delete()
+
+        pk_dict = validate_primary_key(origin_model_pk=previous_pk, related_model_pk=pk)
+        pk_query_set.filter(**pk_dict).delete()
         return True
 
     if pk and not previous_pk:
@@ -54,9 +58,8 @@ def delete_join_record(pk: [str, int], previous_pk: [str, int]):
 
 
 def validate_primary_key(origin_model_pk: [str, int], related_model_pk: [str, int]):
-
-    origin_pk_type = 'uuid' if valid_uuid4(origin_model_pk) else 'id'
-    related_pk_type = 'uuid' if valid_uuid4(related_model_pk) else 'id'
+    origin_pk_type = 'uuid' if valid_uuid4(str(origin_model_pk)) else 'id'
+    related_pk_type = 'uuid' if valid_uuid4(str(related_model_pk)) else 'id'
 
     if origin_pk_type == 'id' and related_pk_type == 'id':
         return {
