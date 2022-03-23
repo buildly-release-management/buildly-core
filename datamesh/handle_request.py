@@ -14,13 +14,13 @@ class RequestHandler:
         self.related_fk_name, self.origin_fk_name = None, None
         self.related_model_pk_name, self.origin_model_pk_name = None, None
         self.organization, self.request, self.relation_data = None, None, None
+        self.datamesh_response = {}
 
     def validate_request(self, relationship: str, relationship_data: Union[dict, list], request_kwargs: dict):
-
         # update the variable
         self.organization = self.request.session.get('jwt_organization_uuid', None)
-        self.origin_model_pk_name = request_kwargs['request_param'][relationship]['origin_lookup_field_name']
-        self.related_model_pk_name = request_kwargs['request_param'][relationship]['related_lookup_field_name']
+        self.origin_model_pk_name = request_kwargs['request_param'][relationship]['origin_model_pk_name']
+        self.related_model_pk_name = request_kwargs['request_param'][relationship]['related_model_pk_name']
         self.origin_fk_name = request_kwargs['request_param'][relationship]['origin_fk_name']
         self.related_fk_name = request_kwargs['request_param'][relationship]['related_fk_name']
         self.relation_data = relationship_data
@@ -29,7 +29,7 @@ class RequestHandler:
         if self.request.method in ['POST'] and 'extend' in self.query_params:
             origin_model_pk = self.resp_data[self.origin_model_pk_name]
             related_model_pk = self.request.data[self.related_model_pk_name]
-            return join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, organization=self.organization)
+            return join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None)
 
         # update the created object reference to request_relationship_data
         if self.request.method in ['POST'] and 'join' in self.query_params:
@@ -64,17 +64,12 @@ class RequestHandler:
         going to update the reference(pk) in other model
         """
 
-        # assuming if request doesn't have pk then data needed to be created
-        pk_name = list(self.relationship_data.data.keys())[0]
+        pk = self.relationship_data.data.get(self.related_model_pk_name)
+        res_pk = self.resp_data.get(self.origin_model_pk_name)
 
-        if pk_name == self.origin_model_pk_name:
+        if not self.request_param[relationship]['is_forward_lookup']:
             pk = self.relationship_data.data.get(self.origin_model_pk_name)
             res_pk = self.resp_data.get(self.related_model_pk_name)
-        elif pk_name == self.related_model_pk_name:
-            pk = self.relationship_data.data.get(self.related_model_pk_name)
-            res_pk = self.resp_data.get(self.origin_model_pk_name)
-        else:
-            pk, res_pk = None, None
 
         if not pk:
             """case 1"""
@@ -85,28 +80,30 @@ class RequestHandler:
                 self.request_param[relationship]['pk'], self.request.method = None, 'POST'
                 self.relationship_data.data[reference_field_name] = pk
         else:
-            """case 2"""
-            # update the request and param method here we are keeping original request in
-            # request_method considering for above condition request method might be updated
+            """
+            # update the request and param method to original.as considering for above condition(case 1) request method might be updated.
+            """
             self.request.method, self.request_param[relationship]['method'] = self.request_method, self.request_method
             self.request_param[relationship]['pk'] = pk
 
-            """case 3"""
             if ("join" and "previous_pk") in self.relationship_data.data:
-                # identify which is origin pk and related pk and up
-                if not self.relationship_data.data['is_forward_lookup']:
-                    res_pk, pk = pk, res_pk
+
+                origin_model_pk_name = self.request_param[relationship]['origin_model_pk_name']
+                related_model_pk_name = self.request_param[relationship]['related_model_pk_name']
 
                 # delete join record
                 delete_join_record(pk=res_pk, previous_pk=self.relationship_data.data['previous_pk'])
 
                 # update new values
-                origin_model_pk = self.resp_data[self.request_param[relationship]['origin_model_pk_name']]
-                related_model_pk = self.relationship_data.data[self.request_param[relationship]['related_model_pk_name']]
+                origin_model_pk = self.resp_data.get(origin_model_pk_name)
+                related_model_pk = self.relationship_data.data.get(related_model_pk_name)
 
-                # join record
-                join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk,
-                            organization=self.organization)
+                if not self.request_param[relationship]['is_forward_lookup']:
+                    origin_model_pk = self.relationship_data.data.get(origin_model_pk_name)
+                    related_model_pk = self.resp_data.get(related_model_pk_name)
+
+                validate_join(record_uuid=origin_model_pk, related_record_uuid=related_model_pk, relationship=relationship)
+
                 return False
 
         return self.relationship_data
@@ -161,8 +158,7 @@ class RequestHandler:
             if self.request.method in ['POST'] and 'join' in self.query_params:  # create join record
                 origin_model_pk = content[self.request_param[relationship]['origin_model_pk_name']]
                 related_model_pk = self.resp_data[self.request_param[relationship]['related_model_pk_name']]
-                join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk,
-                            organization=self.organization)
+                join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None)
 
     def validate_relationship_data(self, resp_data: Union[dict, list], relationship: str):
         """This function will validate the type of field and the relationship data"""
