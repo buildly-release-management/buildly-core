@@ -11,18 +11,19 @@ class RequestHandler:
         self.relationship_data, self.request_kwargs = None, None
         self.query_params, self.request_param = None, None
         self.resp_data, self.request_method = None, None
-        self.related_fk_name, self.origin_fk_name = None, None
+        self.fk_field_name, self.is_forward_lookup = None, None
         self.related_model_pk_name, self.origin_model_pk_name = None, None
         self.organization, self.request, self.relation_data = None, None, None
-        self.datamesh_response = {}
 
     def validate_request(self, relationship: str, relationship_data: Union[dict, list], request_kwargs: dict):
         # update the variable
         self.organization = self.request.session.get('jwt_organization_uuid', None)
         self.origin_model_pk_name = request_kwargs['request_param'][relationship]['origin_model_pk_name']
         self.related_model_pk_name = request_kwargs['request_param'][relationship]['related_model_pk_name']
-        self.origin_fk_name = request_kwargs['request_param'][relationship]['origin_fk_name']
-        self.related_fk_name = request_kwargs['request_param'][relationship]['related_fk_name']
+
+        self.fk_field_name = request_kwargs['request_param'][relationship]['fk_field_name']
+        self.is_forward_lookup = request_kwargs['request_param'][relationship]['is_forward_lookup']
+
         self.relation_data = relationship_data
 
         # post the origin_model model data and create join with related_model
@@ -45,11 +46,10 @@ class RequestHandler:
 
     def prepare_create_request(self, relationship: str):
 
-        pk = self.resp_data.get(self.origin_model_pk_name) if self.resp_data.get(self.origin_model_pk_name, None) else self.resp_data.get(self.related_model_pk_name, None)
-        key_name = self.origin_fk_name if self.origin_fk_name in self.relation_data.data.keys() else self.related_fk_name
+        pk = self.resp_data.get(self.origin_model_pk_name) if self.is_forward_lookup else self.resp_data.get(self.related_model_pk_name)
 
-        if pk and key_name:
-            self.relation_data.data[key_name] = pk
+        if pk and self.fk_field_name:
+            self.relation_data.data[self.fk_field_name] = pk
             self.request_param[relationship]['method'] = self.request_method
         else:
             return
@@ -64,40 +64,43 @@ class RequestHandler:
         going to update the reference(pk) in other model
         """
 
-        pk = self.relationship_data.data.get(self.related_model_pk_name)
-        res_pk = self.resp_data.get(self.origin_model_pk_name)
-
+        # retrieving values for reversed relation by checking is_forward_lookup var flag
         if not self.request_param[relationship]['is_forward_lookup']:
             pk = self.relationship_data.data.get(self.origin_model_pk_name)
             res_pk = self.resp_data.get(self.related_model_pk_name)
+        else:
+            # retrieving values for forward relation
+            pk = self.relationship_data.data.get(self.related_model_pk_name)
+            res_pk = self.resp_data.get(self.origin_model_pk_name)
 
         if not pk:
-            """case 1"""
             # Note : Not updating fk reference considering when we're updating we have it already on request relation data
-            reference_field_name = self.origin_fk_name if self.origin_fk_name in self.relationship_data.data.keys() else self.related_fk_name
-            if reference_field_name in self.relationship_data.data.keys():
+            if self.fk_field_name in self.relationship_data.data.keys():
                 # update the method as we are creating relation object and save pk to none as we are performing post request
                 self.request_param[relationship]['pk'], self.request.method = None, 'POST'
-                self.relationship_data.data[reference_field_name] = pk
+                self.relationship_data.data[self.fk_field_name] = pk
         else:
-            """
             # update the request and param method to original.as considering for above condition(case 1) request method might be updated.
-            """
             self.request.method, self.request_param[relationship]['method'] = self.request_method, self.request_method
             self.request_param[relationship]['pk'] = pk
 
+            """
+            If have join and previous_pk var in relation data then delete join record for the current relation which contain previous_pk
+            and create join with relation data pk else update current relation data
+            """
             if ("join" and "previous_pk") in self.relationship_data.data:
-
                 origin_model_pk_name = self.request_param[relationship]['origin_model_pk_name']
                 related_model_pk_name = self.request_param[relationship]['related_model_pk_name']
 
-                # delete join record
+                # delete join record for the current relation which contain previous_pk
                 delete_join_record(pk=res_pk, previous_pk=self.relationship_data.data['previous_pk'])
 
-                # update new values
+                # fetch values from response data and relation data to create join
+                # retrieving values considering forward relation
                 origin_model_pk = self.resp_data.get(origin_model_pk_name)
                 related_model_pk = self.relationship_data.data.get(related_model_pk_name)
 
+                # if not forward relation update the values and create join
                 if not self.request_param[relationship]['is_forward_lookup']:
                     origin_model_pk = self.relationship_data.data.get(origin_model_pk_name)
                     related_model_pk = self.resp_data.get(related_model_pk_name)
@@ -163,13 +166,12 @@ class RequestHandler:
     def validate_relationship_data(self, resp_data: Union[dict, list], relationship: str):
         """This function will validate the type of field and the relationship data"""
 
-        # get the pk name
-        origin_field_name = self.request_param[relationship]['origin_lookup_field_name']
-        related_field_name = self.request_param[relationship]['origin_fk_name']
+        # get the fk name
+        fk_field_name = self.request_param[relationship]['fk_field_name']
 
         # get pk from origin request response
-        origin_lookup_field_uuid = resp_data.get(origin_field_name, None)
-        related_lookup_field_uuid = resp_data.get(related_field_name, None)
+        origin_lookup_field_uuid = resp_data.get(self.origin_model_pk_name, None)
+        related_lookup_field_uuid = resp_data.get(fk_field_name, None)
 
         if related_lookup_field_uuid and origin_lookup_field_uuid:
             if type(related_lookup_field_uuid) == type([]):  # check for array type
