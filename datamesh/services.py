@@ -156,7 +156,7 @@ class DataMesh:
                 'related_model_pk_name': relationship.related_model.lookup_field_name,
                 'origin_model_pk_name': relationship.origin_model.lookup_field_name,
 
-                'fk_field_name': relationship.origin_fk_field_name,
+                'fk_field_name': relationship.fk_field_name,
                 'is_forward_lookup': is_forward_lookup
             }
 
