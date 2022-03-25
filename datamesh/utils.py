@@ -22,9 +22,9 @@ def prepare_lookup_kwargs(is_forward_lookup: bool,
     return related_model, related_record_field
 
 
-def validate_join(record_uuid: [str, int], related_record_uuid: [str, int], relationship: str) -> None:
+def validate_join(origin_model_pk: [str, int], related_model_pk: [str, int], relationship: str) -> None:
     """This function is validating the join if the join not created, yet then it will create the join """
-    pk_dict = validate_primary_key(origin_model_pk=record_uuid, related_model_pk=related_record_uuid)
+    pk_dict = validate_primary_key(origin_model_pk=origin_model_pk, related_model_pk=related_model_pk)
 
     join_record_instance = JoinRecord.objects.filter(**pk_dict, relationship__key=relationship)
     if not join_record_instance:
