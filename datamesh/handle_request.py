@@ -51,15 +51,16 @@ class RequestHandler:
         self.perform_request(relationship=relationship, relation_data=self.relation_data)
 
     def prepare_create_request(self, relationship: str):
-
-        pk = self.resp_data.get(self.origin_model_pk_name)
-        if not self.is_forward_lookup:
-            pk = self.resp_data.get(self.related_model_pk_name)
-
-        if pk and self.fk_field_name:
+        """
+        This function will update fk reference in relation data and return updated relation data to perform
+        POST request.
+        """
+        pk = list(self.resp_data.values())[0]
+        if pk:
             if self.fk_field_name in self.relation_data.data:
                 self.relation_data.data[self.fk_field_name] = pk
             self.request_param[relationship]['method'] = self.request_method
+            print(relationship, self.relation_data.data)
         else:
             return
 
@@ -177,13 +178,14 @@ class RequestHandler:
             # perform a service data request
             content, status_code, headers = client.request(**self.request_param[relationship])
 
-            if self.request.method in ['POST'] and 'join' in self.query_params:  # create join record
+            if self.request.method in ['POST'] and 'join' in self.query_params and status_code in [200, 201]:
 
-                related_model_pk = content[self.request_param[relationship]['related_model_pk_name']]
-                origin_model_pk = self.resp_data[self.request_param[relationship]['origin_model_pk_name']]
+                related_model_pk = content.get(self.related_model_pk_name)
+                origin_model_pk = self.resp_data.get(self.origin_model_pk_name)
+
                 if not self.is_forward_lookup:
-                    related_model_pk = content[self.request_param[relationship]['related_model_pk_name']]
-                    origin_model_pk = self.resp_data[self.request_param[relationship]['origin_model_pk_name']]
+                    related_model_pk = self.resp_data.get(self.related_model_pk_name)
+                    origin_model_pk = content.get(self.origin_model_pk_name)
 
                 join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None)
 
