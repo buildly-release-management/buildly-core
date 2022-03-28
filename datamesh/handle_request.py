@@ -1,8 +1,12 @@
 from typing import Union
 from datamesh.utils import validate_join, delete_join_record, join_record
 from gateway.clients import SwaggerClient
-
+from django.apps import apps
 import gateway.request as gateway_request
+from .exceptions import DatameshConfigurationError
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RequestHandler:
@@ -60,7 +64,6 @@ class RequestHandler:
             if self.fk_field_name in self.relation_data.data:
                 self.relation_data.data[self.fk_field_name] = pk
             self.request_param[relationship]['method'] = self.request_method
-            print(relationship, self.relation_data.data)
         else:
             return
 
@@ -170,24 +173,19 @@ class RequestHandler:
         # allow only if origin model needs to update or create
         if self.request.method in ['POST', 'PUT', 'PATCH'] and 'join' in self.query_params:
 
-            # create a client for performing data requests
-            g_request = gateway_request.GatewayRequest(self.request_kwargs['request'])
-            spec = g_request._get_swagger_spec(self.request_param[relationship]['service'])
-            client = SwaggerClient(spec, relation_data)
+            if self.request_param[relationship]['is_local']:
+                self.perform_core_request(relationship=relationship, relation_data=relation_data)
+            else:
+                # create a client for performing data requests
+                g_request = gateway_request.GatewayRequest(self.request_kwargs['request'])
+                spec = g_request._get_swagger_spec(self.request_param[relationship]['service'])
+                client = SwaggerClient(spec, relation_data)
 
-            # perform a service data request
-            content, status_code, headers = client.request(**self.request_param[relationship])
+                # perform a service data request
+                content, status_code, headers = client.request(**self.request_param[relationship])
 
-            if self.request.method in ['POST'] and 'join' in self.query_params and status_code in [200, 201]:
-
-                related_model_pk = content.get(self.related_model_pk_name)
-                origin_model_pk = self.resp_data.get(self.origin_model_pk_name)
-
-                if not self.is_forward_lookup:
-                    related_model_pk = self.resp_data.get(self.related_model_pk_name)
-                    origin_model_pk = content.get(self.origin_model_pk_name)
-
-                join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None)
+                if self.request.method in ['POST'] and 'join' in self.query_params and status_code in [200, 201]:
+                    self.prepare_join(content=content, relationship=relationship)
 
     def validate_relationship_data(self, resp_data: Union[dict, list], relationship: str):
         """
@@ -238,3 +236,59 @@ class RequestHandler:
                     validate_join(origin_model_pk=origin_lookup_field_uuid, related_model_pk=related_lookup_field_uuid, relationship=relationship)
             else:
                 return validate_join(origin_model_pk=origin_lookup_field_uuid, related_model_pk=related_lookup_field_uuid, relationship=relationship)
+
+    def perform_core_request(self, relationship: str, relation_data: any):
+        """
+        To perform request with core here we need to retrieve model from different app in project.
+        so to retrieve model while creating relation mention service name to {app_name} from buildly
+        project ex.core,datamesh,gateway.
+        """
+        try:
+            model = apps.get_model(app_label=self.request_param[relationship]['service'],
+                                   model_name=self.request_param[relationship]['model'])
+        except LookupError as e:
+            raise DatameshConfigurationError(f'Data Mesh configuration error: {e}')
+
+        lookup = {
+            self.request_param[relationship]['related_model_pk_name']: self.request_param[relationship]['pk']
+        }
+
+        instance = None
+
+        # validate the request and perform respective request on model
+        if self.request.method in ['POST'] and 'join' in self.query_params:
+            try:
+                instance = model.objects.create(**relation_data.data)
+            except model.DoesNotExist as e:
+                logger.warning(f'{e}, params: {lookup}')
+            return self.prepare_join(content=instance.__dict__, relationship=relationship)
+
+        # validate the request and perform respective request on model
+        if self.request.method in ['PUT', 'PATCH'] and 'join' in self.query_params:
+
+            # To get data from model retrieve model pk_name and pk_value from relation data and
+            # pass it to get function
+            key_value = {list(relation_data.data)[0]: list(relation_data.data.values())[0]}
+
+            try:
+                instance = model.objects.get(**key_value)
+            except model.DoesNotExist as e:
+                logger.warning(f'{e}, params: {lookup}')
+
+            # update the relation to and save the instance
+            instance.__dict__.update(**relation_data.data)
+            instance.save()
+
+    def prepare_join(self, content: dict, relationship: str):
+        """
+        This function will retrieve the primary key from the original request response and related relation
+        response depending on forward/reverse relation and will create join with both pk
+        """
+        related_model_pk = content.get(self.related_model_pk_name)
+        origin_model_pk = self.resp_data.get(self.origin_model_pk_name)
+
+        if not self.is_forward_lookup:
+            related_model_pk = self.resp_data.get(self.related_model_pk_name)
+            origin_model_pk = content.get(self.origin_model_pk_name)
+
+        join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None)

@@ -157,7 +157,8 @@ class DataMesh:
                 'origin_model_pk_name': relationship.origin_model.lookup_field_name,
 
                 'fk_field_name': relationship.fk_field_name,
-                'is_forward_lookup': is_forward_lookup
+                'is_forward_lookup': is_forward_lookup,
+                'is_local': relationship.related_model.is_local
             }
 
             request_param[relationship.key] = params
