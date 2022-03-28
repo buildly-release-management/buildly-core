@@ -35,7 +35,7 @@ def run_seed(self, mode):
         related_module_endpoint='/thirdpartytool/',
         related_module_lookup_field_name='thirdpartytool_uuid',
 
-        origin_fk_field_name='third_party_tool',
+        fk_field_name='third_party_tool',
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -64,7 +64,7 @@ def run_seed(self, mode):
         related_module_endpoint='/productteam/',
         related_module_lookup_field_name='productteam_uuid',
 
-        origin_fk_field_name='product_team',
+        fk_field_name='product_team',
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -94,7 +94,7 @@ def run_seed(self, mode):
         related_module_endpoint='/product/',
         related_module_lookup_field_name='product_uuid',
 
-        origin_fk_field_name='product_uuid',
+        fk_field_name='product_uuid',
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
@@ -124,7 +124,7 @@ def run_seed(self, mode):
         related_module_endpoint='/product/',
         related_module_lookup_field_name='product_uuid',
 
-        origin_fk_field_name='product_uuid',
+        fk_field_name='product_uuid',
 
         origin_lookup_field_type='uuid',
         related_lookup_field_type='uuid',
