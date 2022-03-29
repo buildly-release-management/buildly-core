@@ -90,8 +90,9 @@ class RequestHandler:
             # Note : Not updating fk reference considering when we're updating we have it already on request relation data
             if self.fk_field_name in self.relationship_data.data.keys():
                 # update the method as we are creating relation object and save pk to none as we are performing post request
-                self.relationship_data.data[self.fk_field_name] = pk
+                self.relationship_data.data[self.fk_field_name] = res_pk
             self.request_param[relationship]['pk'], self.request.method = None, 'POST'
+
         else:
             # update the request and param method to original.as considering for above condition(case 1) request method might be updated.
             self.request.method, self.request_param[relationship]['method'] = self.request_method, self.request_method
@@ -157,7 +158,7 @@ class RequestHandler:
             for instance in data:
                 self.request.method = self.request_method
 
-                # clearing all the form current request and updating it with related data the going to POST/PUT
+                # clearing all the data from current request and updating it with related data the going to POST/PUT
                 self.relationship_data = self.request  # copy the request data to another variable
                 self.relationship_data.data.clear()  # clear request.data.data
                 self.relationship_data.data.update(instance)  # update the relationship_data to request.data to perform request
@@ -170,6 +171,7 @@ class RequestHandler:
         In this function all the relation request ['POST', 'PUT', 'PATCH'] will call and will create join with origin request
         response model pk with relation request response model pk.
         """
+
         # allow only if origin model needs to update or create
         if self.request.method in ['POST', 'PUT', 'PATCH'] and 'join' in self.query_params:
 
@@ -284,6 +286,7 @@ class RequestHandler:
         This function will retrieve the primary key from the original request response and related relation
         response depending on forward/reverse relation and will create join with both pk
         """
+
         related_model_pk = content.get(self.related_model_pk_name)
         origin_model_pk = self.resp_data.get(self.origin_model_pk_name)
 
