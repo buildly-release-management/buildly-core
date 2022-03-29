@@ -1,10 +1,14 @@
 from typing import Union
-from datamesh.utils import validate_join, delete_join_record, join_record
+
+from django.core.exceptions import ValidationError
+
+from datamesh.utils import validate_join, delete_join_record, join_record, prepare_request
 from gateway.clients import SwaggerClient
 from django.apps import apps
 import gateway.request as gateway_request
 from .exceptions import DatameshConfigurationError
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,7 @@ class RequestHandler:
         self.fk_field_name, self.is_forward_lookup = None, None
         self.related_model_pk_name, self.origin_model_pk_name = None, None
         self.organization, self.request, self.relation_data = None, None, None
+        self.request_response = None
 
     def validate_request(self, relationship: str, relationship_data: Union[dict, list], request_kwargs: dict):
         """
@@ -119,8 +124,8 @@ class RequestHandler:
                     origin_model_pk = self.relationship_data.data.get(origin_model_pk_name)
                     related_model_pk = self.resp_data.get(related_model_pk_name)
 
-                validate_join(origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, relationship=relationship)
-
+                if validate_join(origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, relationship=relationship):
+                    self.perform_get_request(relationship=relationship, related_pk=list(self.relationship_data.data.values())[0])
                 return False
 
         return self.relationship_data
@@ -135,7 +140,7 @@ class RequestHandler:
         """
 
         # update the variable
-        self.resp_data = request_kwargs.get('resp_data', None)
+        self.resp_data, self.request_response = request_kwargs.get('resp_data'), request_kwargs.get('resp_data')
         self.request = request_kwargs['request']
         self.request_kwargs = request_kwargs
         self.request_method = request_kwargs['request_method']
@@ -145,6 +150,7 @@ class RequestHandler:
         # iterate over the datamesh relationships
         self.relationship_data = {}
         for relationship in request_kwargs['datamesh_relationship']:  # retrieve relationship data from request.data
+            self.request_response[relationship] = []
             self.relationship_data[relationship] = self.request.data.get(relationship)
 
         for relationship, data in self.relationship_data.items():  # iterate over the relationship and data
@@ -186,6 +192,12 @@ class RequestHandler:
                 # perform a service data request
                 content, status_code, headers = client.request(**self.request_param[relationship])
 
+                if self.request.method in ['PUT', 'PATCH'] and 'join' in self.query_params and status_code in [200, 201]:
+                    if content and relationship in self.request_response:
+                        relation_data = self.request_response[relationship].copy()
+                        relation_data.append(content)
+                        self.request_response.update({relationship: relation_data})
+
                 if self.request.method in ['POST'] and 'join' in self.query_params and status_code in [200, 201]:
                     self.prepare_join(content=content, relationship=relationship)
 
@@ -201,8 +213,8 @@ class RequestHandler:
         fk_field_name = self.request_param[relationship]['fk_field_name']
 
         # retrieve pk from origin request response
-        origin_lookup_field_uuid = resp_data.get(self.request_param[relationship]['origin_model_pk_name'], None)
-        related_lookup_field_uuid = resp_data.get(fk_field_name, None)
+        origin_lookup_field = resp_data.get(self.request_param[relationship]['origin_model_pk_name'], None)
+        related_lookup_field = resp_data.get(fk_field_name, None)
 
         """
         Note: we are updating __init__() values in validate_request() function and current function will execute before that because
@@ -219,25 +231,39 @@ class RequestHandler:
                 resp_data_keys = list(resp_data.keys())
                 resp_data_keys.pop(0)
                 if fk_field_name in resp_data_keys:
-                    origin_lookup_field_uuid = resp_data.get(self.request_param[relationship]['related_model_pk_name'], None)
+                    origin_lookup_field = resp_data.get(self.request_param[relationship]['related_model_pk_name'], None)
             else:
-                origin_lookup_field_uuid = resp_data.get(self.request_param[relationship]['related_model_pk_name'], None)
+                origin_lookup_field = resp_data.get(self.request_param[relationship]['related_model_pk_name'], None)
 
         # considering models field might be array-type.
-        if related_lookup_field_uuid and origin_lookup_field_uuid:
-            if type(related_lookup_field_uuid) == type([]):  # check for array type
-                for uuid in related_lookup_field_uuid:  # for each item in array/list
-                    related_lookup_field_uuid = uuid
+        if related_lookup_field and origin_lookup_field:
+            if type(related_lookup_field) == type([]):  # check for array type
+                for pk in related_lookup_field:  # for each item in array/list
+                    related_lookup_field = pk
                     # validate the join
-                    validate_join(origin_model_pk=origin_lookup_field_uuid, related_model_pk=related_lookup_field_uuid, relationship=relationship)
+                    validate_join(origin_model_pk=origin_lookup_field, related_model_pk=related_lookup_field, relationship=relationship)
+                    self.perform_get_request(relationship=relationship, related_pk=related_lookup_field)
 
-            elif type(origin_lookup_field_uuid) == type([]):  # check for array type
-                for uuid in origin_lookup_field_uuid:  # for each item in array/list
-                    origin_lookup_field_uuid = uuid
+            elif type(origin_lookup_field) == type([]):  # check for array type
+                for pk in origin_lookup_field:  # for each item in array/list
+                    origin_lookup_field = pk
                     # validate the join
-                    validate_join(origin_model_pk=origin_lookup_field_uuid, related_model_pk=related_lookup_field_uuid, relationship=relationship)
+                    validate_join(origin_model_pk=origin_lookup_field, related_model_pk=related_lookup_field, relationship=relationship)
+                    self.perform_get_request(relationship=relationship, related_pk=related_lookup_field)
             else:
-                return validate_join(origin_model_pk=origin_lookup_field_uuid, related_model_pk=related_lookup_field_uuid, relationship=relationship)
+                validate_join(origin_model_pk=origin_lookup_field, related_model_pk=related_lookup_field, relationship=relationship)
+                self.perform_get_request(relationship=relationship, related_pk=related_lookup_field)
+
+    def perform_get_request(self, relationship: str, related_pk: [int, str]):
+
+        service_url, header = prepare_request(request=self.request, request_param=self.request_param[relationship], related_model_pk=related_pk)
+        result = requests.get(url=service_url, headers=header)
+
+        if result.status_code in [200] and relationship in self.request_response:
+            relation_data = self.request_response[relationship].copy()
+            relation_data.append(result.json())
+
+            self.request_response.update({relationship: relation_data})
 
     def perform_core_request(self, relationship: str, relation_data: any):
         """
@@ -261,8 +287,9 @@ class RequestHandler:
         if self.request.method in ['POST'] and 'join' in self.query_params:
             try:
                 instance = model.objects.create(**relation_data.data)
-            except model.DoesNotExist as e:
+            except ValidationError as e:
                 logger.warning(f'{e}, params: {lookup}')
+
             return self.prepare_join(content=instance.__dict__, relationship=relationship)
 
         # validate the request and perform respective request on model
@@ -294,4 +321,16 @@ class RequestHandler:
             related_model_pk = self.resp_data.get(self.related_model_pk_name)
             origin_model_pk = content.get(self.origin_model_pk_name)
 
-        join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None)
+        if join_record(relationship=relationship, origin_model_pk=origin_model_pk, related_model_pk=related_model_pk, pk_dict=None):
+            """
+            Append the relation request response to original request response.
+            If POST or PUT request is not sending the data in response in that case call that object via request.
+            """
+            # validating content and the current relation
+            if content and relationship in self.request_response:
+                relation_data = self.request_response[relationship].copy()
+                relation_data.append(content)
+                self.request_response.update({relationship: relation_data})
+            else:
+                # perform get request if request doesn't send data in response
+                self.perform_get_request(relationship=relationship, related_pk=list(content.values())[0])

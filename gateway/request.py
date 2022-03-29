@@ -181,13 +181,6 @@ class GatewayRequest(BaseGatewayRequest):
             request_handler = RequestHandler()
             request_handler.retrieve_relationship_data(request_kwargs=request_kwargs)
 
-            # perform get
-            service_url, header = prepare_get_request(request=self.request, resp_data=resp_data)
-            result = requests.get(url=service_url, headers=header)
-
-            # clear and update datamesh get response
-            resp_data.clear()
-            resp_data.update(result.json())
         else:
 
             for service in datamesh.related_logic_modules:
