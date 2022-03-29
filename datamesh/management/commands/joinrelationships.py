@@ -17,61 +17,34 @@ class Command(BaseCommand):
 def run_seed(self, mode):
     """call function here."""
 
+    # # product <-> organization - with core model join.
+    # """product.json"""
     # join_relationship(
-    #     json_file="core.json",
+    #     json_file="product.json",
     #
     #     is_local=True,
     #
-    #     origin_logic_module='core',
+    #     origin_logic_module='product',
     #     related_logic_module='core',
     #
-    #     origin_module_model='CoreUser',
-    #     origin_module_endpoint='/coreuser/',
-    #     origin_module_lookup_field_name='id',
+    #     origin_module_model='Product',
+    #     origin_module_endpoint='/product/',
+    #     origin_module_lookup_field_name='product_uuid',
     #
     #     related_module_model='Organization',
     #     related_module_endpoint='/organization/',
     #     related_module_lookup_field_name='organization_uuid',
     #
-    #     fk_field_name='organization',
+    #     fk_field_name='organization_uuid',
     #
-    #     origin_lookup_field_type='id',
+    #     origin_lookup_field_type='uuid',
     #     related_lookup_field_type='uuid',
     #
-    #     relationship_key_name='coreuser_organization_relationship',
-    #     field_name='organization',
+    #     relationship_key_name='product_organization_relationship',
+    #     field_name='organization_uuid',
     #     is_list=False,
     #     organization=None,
     # )
-
-    # product <-> organization - with core model join.
-    """product.json"""
-    join_relationship(
-        json_file="product.json",
-
-        is_local=True,
-
-        origin_logic_module='product',
-        related_logic_module='core',
-
-        origin_module_model='Product',
-        origin_module_endpoint='/product/',
-        origin_module_lookup_field_name='product_uuid',
-
-        related_module_model='Organization',
-        related_module_endpoint='/organization/',
-        related_module_lookup_field_name='organization_uuid',
-
-        fk_field_name='organization_uuid',
-
-        origin_lookup_field_type='uuid',
-        related_lookup_field_type='uuid',
-
-        relationship_key_name='product_organization_relationship',
-        field_name='organization_uuid',
-        is_list=False,
-        organization=None,
-    )
 
     # product <-> third party tool - within service model join.
     """product.json"""
