@@ -19,6 +19,8 @@ from core.models import LogicModule
 # related_module_endpoint = send origin module endpoint
 # related_module_lookup_field_name = send origin module model lookup field
 
+# fk_field_name = foreign key name
+
 # lookup_field_type = it's either id or uuid
 # relationship_key_name = send relation name
 
@@ -28,28 +30,36 @@ from core.models import LogicModule
 # organization = send organization name if have else by default it will set to None
 
 join_relationship(
-    json_file=,
+        json_file="product.json",
 
-    is_local=,
+        is_local=False,
 
-    origin_logic_module = ,
-    related_logic_module = ,
+        origin_logic_module='product',
+        related_logic_module='product',
 
-    origin_module_model =,
-    origin_module_endpoint =,
-    origin_module_lookup_field_name =,
+        origin_module_model='Product',
+        origin_module_endpoint='/product/',
+        origin_module_lookup_field_name='product_uuid',
 
-    related_module_model =,
-    related_module_endpoint=,
-    related_module_lookup_field_name=,
+        related_module_model='ThirdPartyTool',
+        related_module_endpoint='/thirdpartytool/',
+        related_module_lookup_field_name='thirdpartytool_uuid',
 
-    lookup_field_type = ,
+        fk_field_name='third_party_tool',
 
-    relationship_key_name=,
-    field_name=,
-    is_list=,
-    organization=,
+        origin_lookup_field_type='uuid',
+        related_lookup_field_type='uuid',
+
+        relationship_key_name='product_thirdpartytool_relationship',
+        field_name='third_party_tool',
+        is_list=True,
+        organization=None,
 )
+"""
+
+"""
+join_relationship will accept above data to create datamesh relation and from JSON file it will create join for 
+existing objects.
 """
 
 
@@ -110,7 +120,6 @@ def join_relationship(*args, **kwargs):
 
 
 def prepare_relation(*args, **kwargs):
-
     """This function will create logic module and datamesh relationship"""
 
     # get logic module from core
