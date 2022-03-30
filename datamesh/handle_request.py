@@ -140,7 +140,7 @@ class RequestHandler:
         """
 
         # update the variable
-        self.resp_data, self.request_response = request_kwargs.get('resp_data'), request_kwargs.get('resp_data')
+        self.resp_data, self.request_response = request_kwargs['resp_data'], request_kwargs['resp_data'].copy()
         self.request = request_kwargs['request']
         self.request_kwargs = request_kwargs
         self.request_method = request_kwargs['request_method']
@@ -171,6 +171,8 @@ class RequestHandler:
 
                 # validate request
                 self.validate_request(relationship=relationship, relationship_data=self.relationship_data, request_kwargs=request_kwargs)
+
+        return self.request_response
 
     def perform_request(self, relationship: str, relation_data: any):
         """

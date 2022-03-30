@@ -176,7 +176,11 @@ class GatewayRequest(BaseGatewayRequest):
 
             # handle datamesh requests
             request_handler = RequestHandler()
-            request_handler.retrieve_relationship_data(request_kwargs=request_kwargs)
+            response = request_handler.retrieve_relationship_data(request_kwargs=request_kwargs)
+
+            # clear and update datamesh get response
+            resp_data.clear()
+            resp_data.update(response)
 
         else:
 
