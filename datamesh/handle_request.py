@@ -1,7 +1,8 @@
+import json
 from typing import Union
 
 from django.core.exceptions import ValidationError
-
+from django.forms.models import model_to_dict
 from datamesh.utils import validate_join, delete_join_record, join_record, prepare_request
 from gateway.clients import SwaggerClient
 from django.apps import apps
@@ -292,7 +293,8 @@ class RequestHandler:
             except ValidationError as e:
                 logger.warning(f'{e}, params: {lookup}')
 
-            return self.prepare_join(content=instance.__dict__, relationship=relationship)
+            obj_dict = model_to_dict(instance)
+            return self.prepare_join(content=obj_dict, relationship=relationship)
 
         # validate the request and perform respective request on model
         if self.request.method in ['PUT', 'PATCH'] and 'join' in self.query_params:
@@ -309,6 +311,8 @@ class RequestHandler:
             # update the relation to and save the instance
             instance.__dict__.update(**relation_data.data)
             instance.save()
+
+            self.request_response[relationship] = [relation_data.data]
 
     def prepare_join(self, content: dict, relationship: str):
         """
