@@ -25,6 +25,8 @@ class StripeViewSet(viewsets.GenericViewSet):
     Return a list of all the products on the stripe account.
     """
 
+    queryset = []
+
     # /stripe/products/
     # send all the products
     @action(detail=False, methods=['get'], permission_classes=[AllowAny], name='Fetch all existing products', url_path='products')
