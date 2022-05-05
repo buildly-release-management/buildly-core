@@ -1,10 +1,14 @@
+import datetime
 import jwt
+import json
 import secrets
+import stripe
 from urllib.parse import urljoin
 
 from django.contrib.auth import password_validation
 from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
+from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.template import Template, Context
@@ -109,10 +113,12 @@ class CoreUserWritableSerializer(CoreUserSerializer):
     password = serializers.CharField(write_only=True)
     organization_name = serializers.CharField(source='organization.name')
     core_groups = serializers.PrimaryKeyRelatedField(many=True, queryset=CoreGroup.objects.all(), required=False)
+    plan = serializers.CharField(required=False)
+    card = serializers.JSONField(required=False)
 
     class Meta:
         model = CoreUser
-        fields = CoreUserSerializer.Meta.fields + ('password', 'organization_name')
+        fields = CoreUserSerializer.Meta.fields + ('password', 'organization_name', 'plan', 'card')
         read_only_fields = CoreUserSerializer.Meta.read_only_fields
 
     def create(self, validated_data):
@@ -122,6 +128,8 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         organization, is_new_org = Organization.objects.get_or_create(name=str(org_name).lower())
 
         core_groups = validated_data.pop('core_groups', [])
+        plan = validated_data.pop('plan', None)
+        card = validated_data.pop('card', None)
 
         # create core user
         if bool(settings.AUTO_APPROVE_USER):  # If auto-approval set to true
@@ -156,6 +164,27 @@ class CoreUserWritableSerializer(CoreUserSerializer):
 
         # add org admin role to the user if org is new
         if is_new_org:
+            if (settings.STRIPE_SECRET and plan and card):
+                stripe.api_key = settings.STRIPE_SECRET
+                customer = stripe.Customer.create(email=coreuser.email, name=organization.name)
+                cardDetails = stripe.PaymentMethod.create(
+                    type="card",
+                    card=card,
+                    billing_details={
+                        "email": coreuser.email,
+                        "name": organization.name
+                    }
+                )
+                stripe.PaymentMethod.attach(cardDetails.id, customer=customer.id)
+                organization.stripe_subscription_details = json.dumps({
+                    "customer_stripe_id": customer.id,
+                    "plan": plan,
+                    "trial_start_date": timezone.now().isoformat(),
+                    "trial_end_date": (timezone.now() + datetime.timedelta(days=30)).isoformat(),
+                    "subscription_start_date": (timezone.now() + datetime.timedelta(days=31)).isoformat()
+                })
+                organization.save()
+
             group_org_admin = CoreGroup.objects.get(organization=organization,
                                                     is_org_level=True,
                                                     permissions=PERMISSIONS_ORG_ADMIN)
