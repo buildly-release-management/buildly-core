@@ -113,12 +113,12 @@ class CoreUserWritableSerializer(CoreUserSerializer):
     password = serializers.CharField(write_only=True)
     organization_name = serializers.CharField(source='organization.name')
     core_groups = serializers.PrimaryKeyRelatedField(many=True, queryset=CoreGroup.objects.all(), required=False)
-    plan = serializers.CharField(required=False)
+    product = serializers.CharField(required=False)
     card = serializers.JSONField(required=False)
 
     class Meta:
         model = CoreUser
-        fields = CoreUserSerializer.Meta.fields + ('password', 'organization_name', 'plan', 'card')
+        fields = CoreUserSerializer.Meta.fields + ('password', 'organization_name', 'product', 'card')
         read_only_fields = CoreUserSerializer.Meta.read_only_fields
 
     def create(self, validated_data):
@@ -128,7 +128,7 @@ class CoreUserWritableSerializer(CoreUserSerializer):
         organization, is_new_org = Organization.objects.get_or_create(name=str(org_name).lower())
 
         core_groups = validated_data.pop('core_groups', [])
-        plan = validated_data.pop('plan', None)
+        product = validated_data.pop('product', None)
         card = validated_data.pop('card', None)
 
         # create core user
@@ -164,9 +164,9 @@ class CoreUserWritableSerializer(CoreUserSerializer):
 
         # add org admin role to the user if org is new
         if is_new_org:
-            if (settings.STRIPE_SECRET and plan and card):
+            if (settings.STRIPE_SECRET and product and card):
                 stripe.api_key = settings.STRIPE_SECRET
-                customer = stripe.Customer.create(email=coreuser.email, name=organization.name)
+                customer = stripe.Customer.create(email=coreuser.email, name=str(organization.name).capitalize())
                 cardDetails = stripe.PaymentMethod.create(
                     type="card",
                     card=card,
@@ -178,7 +178,7 @@ class CoreUserWritableSerializer(CoreUserSerializer):
                 stripe.PaymentMethod.attach(cardDetails.id, customer=customer.id)
                 organization.stripe_subscription_details = json.dumps({
                     "customer_stripe_id": customer.id,
-                    "plan": plan,
+                    "product": product,
                     "trial_start_date": timezone.now().isoformat(),
                     "trial_end_date": (timezone.now() + datetime.timedelta(days=30)).isoformat(),
                     "subscription_start_date": (timezone.now() + datetime.timedelta(days=31)).isoformat()
