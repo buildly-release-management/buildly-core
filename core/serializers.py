@@ -114,7 +114,7 @@ class CoreUserWritableSerializer(CoreUserSerializer):
     organization_name = serializers.CharField(source='organization.name')
     core_groups = serializers.PrimaryKeyRelatedField(many=True, queryset=CoreGroup.objects.all(), required=False)
     product = serializers.CharField(required=False)
-    card = serializers.JSONField(required=False)
+    card = serializers.CharField(required=False)
 
     class Meta:
         model = CoreUser
@@ -167,15 +167,7 @@ class CoreUserWritableSerializer(CoreUserSerializer):
             if (settings.STRIPE_SECRET and product and card):
                 stripe.api_key = settings.STRIPE_SECRET
                 customer = stripe.Customer.create(email=coreuser.email, name=str(organization.name).capitalize())
-                cardDetails = stripe.PaymentMethod.create(
-                    type="card",
-                    card=card,
-                    billing_details={
-                        "email": coreuser.email,
-                        "name": organization.name
-                    }
-                )
-                stripe.PaymentMethod.attach(cardDetails.id, customer=customer.id)
+                stripe.PaymentMethod.attach(card, customer=customer.id)
                 organization.stripe_subscription_details = json.dumps({
                     "customer_stripe_id": customer.id,
                     "product": product,
@@ -375,16 +367,20 @@ class CoreUserUpdateOrganizationSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(required=False)
     core_groups = CoreGroupSerializer(read_only=True, many=True)
     organization = OrganizationSerializer(read_only=True)
+    product = serializers.CharField(required=False)
+    card = serializers.CharField(required=False)
 
     class Meta:
         model = CoreUser
         fields = ('id', 'core_user_uuid', 'first_name', 'last_name', 'email', 'username', 'is_active', 'title',
                   'contact_info', 'privacy_disclaimer_accepted', 'organization_name', 'organization', 'core_groups',
-                  'user_type', 'survey_status')
+                  'user_type', 'survey_status', 'product', 'card')
 
     def update(self, instance, validated_data):
 
         organization_name = str(validated_data.pop('organization_name')).lower()
+        product = validated_data.pop('product', None)
+        card = validated_data.pop('card', None)
         instance.email = validated_data.get('email', instance.email)
         instance.user_type = validated_data.get('user_type', instance.user_type)
         instance.survey_status = validated_data.get('survey_status', instance.survey_status)
@@ -438,6 +434,19 @@ class CoreUserUpdateOrganizationSerializer(serializers.ModelSerializer):
         elif not is_new_org.exists():
             # first update the org name for that user
             organization = Organization.objects.create(name=organization_name)
+            if (settings.STRIPE_SECRET and product and card):
+                stripe.api_key = settings.STRIPE_SECRET
+                customer = stripe.Customer.create(email=instance.email, name=str(organization.name).capitalize())
+                stripe.PaymentMethod.attach(card, customer=customer.id)
+                organization.stripe_subscription_details = json.dumps({
+                    "customer_stripe_id": customer.id,
+                    "product": product,
+                    "trial_start_date": timezone.now().isoformat(),
+                    "trial_end_date": (timezone.now() + datetime.timedelta(days=30)).isoformat(),
+                    "subscription_start_date": (timezone.now() + datetime.timedelta(days=31)).isoformat()
+                })
+                organization.save()
+
             instance.organization = organization
             instance.save()
             # now attach the user role as ADMIN
