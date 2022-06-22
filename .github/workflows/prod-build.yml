@@ -65,7 +65,7 @@ jobs:
       uses: rtCamp/action-slack-notify@v2
       env:
         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        SLACK_MESSAGE: 'Production Docker Image of release service pushed to Google Container Registry Successfully'
+        SLACK_MESSAGE: 'Production Docker Image of buildly core pushed to Google Container Registry Successfully'
         MSG_MINIMAL: true
 
     # Send email alert
