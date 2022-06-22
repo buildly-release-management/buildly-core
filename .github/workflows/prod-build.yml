@@ -79,4 +79,4 @@ jobs:
         subject: Github Actions Build and Push job alert
         to: ${{ secrets.RECIPIENT_EMAIL }}
         from: ${{ secrets.SENDER_EMAIL }}
-        body: Production Docker Image of release service pushed to Google Container Registry Successfully
+        body: Production Docker Image of buildly core pushed to Google Container Registry Successfully
