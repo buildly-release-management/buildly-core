@@ -5,10 +5,11 @@ set -e
 # This script handles Django migrations intelligently:
 # - If FORCE_FAKE_INITIAL=true: Uses --fake-initial (for existing databases)
 # - If FORCE_FRESH_MIGRATE=true: Uses normal migration (for fresh databases) 
+# - If FORCE_FAKE_ALL=true: Uses --fake to mark all migrations as applied (for manually cleared migration history)
 # - If SKIP_MIGRATIONS=true: Skips migration steps entirely
 # - If FORCE_SYNCDB=true: Uses --run-syncdb to create tables without migration history
 # - If FORCE_SYNCDB_UNSAFE=true: Uses --run-syncdb without data checks
-# - Auto-detect (default): Checks if tables exist and chooses --fake-initial or migrate accordingly
+# - Auto-detect (default): Checks if tables exist and chooses --fake or migrate accordingly
 
 bash scripts/tcp-port-wait.sh $DATABASE_HOST $DATABASE_PORT
 
@@ -33,6 +34,10 @@ elif [ "$FORCE_FRESH_MIGRATE" = "true" ]; then
     echo $(date -u) "- FORCE_FRESH_MIGRATE=true, using normal migration"
     python manage.py makemigrations
     python manage.py migrate
+elif [ "$FORCE_FAKE_ALL" = "true" ]; then
+    echo $(date -u) "- FORCE_FAKE_ALL=true, faking all migrations as applied"
+    python manage.py makemigrations
+    python manage.py migrate --fake
 elif [ "$FORCE_SYNCDB" = "true" ]; then
     echo $(date -u) "- FORCE_SYNCDB=true, using --run-syncdb to bypass migration issues"
     echo $(date -u) "- Running makemigrations..."
@@ -68,8 +73,9 @@ except Exception as e:
         echo $(date -u) "- Table check result: $TABLES_EXIST"
         
         if echo "$TABLES_EXIST" | grep -qi "tables_exist:true"; then
-            echo $(date -u) "- Tables exist but migration history is empty, using --fake-initial"
-            python manage.py migrate --fake-initial
+            echo $(date -u) "- Tables exist but migration history is empty, faking all migrations"
+            echo $(date -u) "- Using --fake to mark all migrations as applied without executing them"
+            python manage.py migrate --fake
         else
             echo $(date -u) "- No tables found, running normal migration"
             python manage.py migrate
