@@ -98,7 +98,23 @@ else
         fi
     else
         echo $(date -u) "- makemigrations failed, likely due to InconsistentMigrationHistory"
-        echo $(date -u) "- Using --run-syncdb to bypass migration issues"
+        echo $(date -u) "- Clearing migration records to fix inconsistent state..."
+        
+        # Simple fix: just clear the problematic migration records
+        python manage.py shell -c "
+from django.db import connection
+try:
+    with connection.cursor() as cursor:
+        print('Clearing problematic migration records...')
+        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'admin' AND name = '0001_initial'\")
+        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'core' AND name = '0001_initial'\")
+        print('Cleared admin.0001_initial and core.0001_initial migration records')
+except Exception as e:
+    print(f'Error clearing migration records: {e}')
+" || echo "Failed to clear migration records"
+        
+        echo $(date -u) "- Now trying migration after clearing problematic records..."
+        python manage.py makemigrations || echo "makemigrations still failed"
         python manage.py migrate --run-syncdb || {
             echo $(date -u) "- --run-syncdb failed, trying --fake-initial as last resort"
             python manage.py migrate --fake-initial
