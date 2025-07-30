@@ -36,31 +36,30 @@ elif [ "$FORCE_FRESH_MIGRATE" = "true" ]; then
 elif [ "$FORCE_SYNCDB" = "true" ]; then
     echo $(date -u) "- FORCE_SYNCDB=true, using --run-syncdb to bypass migration issues"
     
+    # First clear migration records to fix any inconsistencies
+    echo $(date -u) "- Clearing migration records to ensure clean state..."
+    python manage.py shell -c "
+from django.db import connection
+try:
+    with connection.cursor() as cursor:
+        print('Clearing problematic migration records...')
+        cursor.execute(\"DELETE FROM django_migrations WHERE app IN ('admin', 'core', 'datamesh', 'gateway')\")
+        print('Cleared migration records for all custom apps')
+except Exception as e:
+    print(f'Error clearing migration records: {e}')
+" || echo "Failed to clear migration records"
+    
     # Check if we have existing data
     HAS_DATA=$(python manage.py shell -c "
 from django.db import connection
 try:
     with connection.cursor() as cursor:
-        # Check if any tables have data
-        cursor.execute(\"\"\"
-            SELECT COUNT(*) FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name NOT LIKE 'django_%'
-            AND table_name NOT LIKE 'auth_%'
-            AND table_name NOT LIKE 'sessions_%'
-            AND table_name NOT LIKE 'contenttypes_%'
-        \"\"\")
-        table_count = cursor.fetchone()[0]
-        
-        if table_count > 0:
-            # Check if core user table has data
-            cursor.execute(\"SELECT COUNT(*) FROM core_coreuser LIMIT 1\")
-            user_count = cursor.fetchone()[0]
-            print(f'has_data:{user_count > 0}')
-        else:
-            print('has_data:false')
+        # Check if core user table exists and has data
+        cursor.execute(\"SELECT COUNT(*) FROM core_coreuser LIMIT 1\")
+        user_count = cursor.fetchone()[0]
+        print(f'has_data:{user_count > 0}')
 except Exception as e:
-    print('has_data:unknown')
+    print('has_data:false')
 " 2>/dev/null)
     
     echo $(date -u) "- Data check result: $HAS_DATA"
@@ -100,20 +99,31 @@ else
         echo $(date -u) "- makemigrations failed, likely due to InconsistentMigrationHistory"
         echo $(date -u) "- Clearing migration records to fix inconsistent state..."
         
-        # Simple fix: just clear the problematic migration records
+        # More comprehensive fix: clear all problematic migration records
         python manage.py shell -c "
 from django.db import connection
 try:
     with connection.cursor() as cursor:
-        print('Clearing problematic migration records...')
-        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'admin' AND name = '0001_initial'\")
-        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'core' AND name = '0001_initial'\")
-        print('Cleared admin.0001_initial and core.0001_initial migration records')
+        print('Clearing all problematic migration records...')
+        # Clear all admin migrations (they have dependency issues)
+        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'admin'\")
+        # Clear all core migrations 
+        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'core'\")
+        # Clear any other potentially problematic apps
+        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'datamesh'\")
+        cursor.execute(\"DELETE FROM django_migrations WHERE app = 'gateway'\")
+        print('Cleared all migration records for problematic apps')
+        
+        # Keep only the essential Django built-in migrations that we know work
+        cursor.execute(\"SELECT COUNT(*) FROM django_migrations WHERE app IN ('auth', 'contenttypes', 'sessions')\")
+        builtin_count = cursor.fetchone()[0]
+        print(f'Kept {builtin_count} built-in Django migration records')
+        
 except Exception as e:
     print(f'Error clearing migration records: {e}')
 " || echo "Failed to clear migration records"
         
-        echo $(date -u) "- Now trying migration after clearing problematic records..."
+        echo $(date -u) "- Now trying migration after clearing all problematic records..."
         python manage.py makemigrations || echo "makemigrations still failed"
         python manage.py migrate --run-syncdb || {
             echo $(date -u) "- --run-syncdb failed, trying --fake-initial as last resort"
