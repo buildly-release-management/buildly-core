@@ -67,7 +67,7 @@ except Exception as e:
         
         echo $(date -u) "- Table check result: $TABLES_EXIST"
         
-        if echo "$TABLES_EXIST" | grep -q "tables_exist:true"; then
+        if echo "$TABLES_EXIST" | grep -qi "tables_exist:true"; then
             echo $(date -u) "- Tables exist but migration history is empty, using --fake-initial"
             python manage.py migrate --fake-initial
         else
