@@ -11,9 +11,10 @@ from rest_framework.permissions import IsAuthenticated
 
 from core.models import Subscription, Coupon
 from core.serializers import SubscriptionSerializer, CouponCodeSerializer
+from core.mixins import SafeUserAccessMixin
 
 
-class SubscriptionViewSet(viewsets.ModelViewSet):
+class SubscriptionViewSet(SafeUserAccessMixin, viewsets.ModelViewSet):
     """
      Managing subscriptions
 
@@ -28,19 +29,23 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     serializer_class = SubscriptionSerializer
     permission_classes = (IsAuthenticated,)
 
-    def get_queryset(self):
-        if not self.request.user.is_authenticated:
-            # Return an empty queryset for unauthenticated users
-            return Subscription.objects.none()
+    def dispatch(self, request, *args, **kwargs):
+        """Override dispatch to handle API documentation introspection safely."""
+        # For API documentation generation, return a safe response
+        if hasattr(request, 'method') and request.method == 'OPTIONS':
+            return super().dispatch(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
 
-        if not hasattr(self.request.user, 'organization'):
-            # Return an empty queryset if the user has no organization
+    def get_queryset(self):
+        # Handle API documentation introspection safely
+        organization = self.get_user_organization()
+        if not organization:
             return Subscription.objects.none()
 
         queryset = (
             super(SubscriptionViewSet, self)
             .get_queryset()
-            .filter(organization=self.request.user.organization)
+            .filter(organization=organization)
         )
 
         if int(self.request.query_params.get('cancelled', '0')):
@@ -51,9 +56,14 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-create_date')
 
     def create(self, request, *args, **kwargs):
+        # Check authentication and organization using mixin
+        org_error = self.require_user_organization()
+        if org_error:
+            return org_error
+
         # check if organization has a coupon
         try:
-            coupon = self.request.user.organization.coupon
+            coupon = self.get_user_organization().coupon
         except (AttributeError, KeyError):
             coupon = None
 
@@ -80,10 +90,12 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        serializer.save(
-            user=self.request.user,
-            created_by=self.request.user,
-        )
+        user = self.get_authenticated_user()
+        if user:
+            serializer.save(
+                user=user,
+                created_by=user,
+            )
 
     def update(self, request, *args, **kwargs):
         # validate coupon code
@@ -155,7 +167,10 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         """
         Get stripe details
         """
-        if not self.request.user.is_authenticated or not hasattr(self.request.user, 'organization'):
+        user = self.get_authenticated_user()
+        organization = self.get_user_organization()
+        
+        if not user or not organization:
             return None
 
         data = self.request.data.copy()
@@ -170,8 +185,8 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
         try:
             customer = stripe.Customer.create(
-                email=self.request.user.email,
-                name=str(self.request.user.organization.name).capitalize(),
+                email=user.email,
+                name=str(organization.name).capitalize(),
                 coupon=coupon.stripe_coupon_id if coupon else None,
             )
             stripe.PaymentMethod.attach(payment_method_id, customer=customer.id)
@@ -206,7 +221,7 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                     subscription_end_date=timezone.datetime.fromtimestamp(
                         stripe_subscription.current_period_end, timezone.utc
                     ).date(),
-                    organization=self.request.user.organization.organization_uuid,
+                    organization=organization.organization_uuid,
                 )
                 data.update(stripe_subscription_details)
 
