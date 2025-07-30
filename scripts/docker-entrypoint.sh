@@ -36,8 +36,16 @@ elif [ "$FORCE_FRESH_MIGRATE" = "true" ]; then
 elif [ "$FORCE_MIGRATION_RESET" = "true" ]; then
     echo $(date -u) "- FORCE_MIGRATION_RESET=true, resetting migration history"
     python manage.py makemigrations
-    python manage.py migrate auth --fake
-    python manage.py migrate --fake-initial
+    # Mark all auth migrations as fake first
+    python manage.py migrate auth --fake || echo "Auth fake failed, continuing..."
+    # Mark all contenttypes migrations as fake (common dependency issue)
+    python manage.py migrate contenttypes --fake || echo "Contenttypes fake failed, continuing..."
+    # Mark all sessions migrations as fake
+    python manage.py migrate sessions --fake || echo "Sessions fake failed, continuing..."
+    # Now fake initial for all apps
+    python manage.py migrate --fake-initial || echo "Fake initial failed, continuing..."
+    # Finally apply any remaining migrations
+    python manage.py migrate || echo "Final migrate had issues, but continuing..."
 elif [ "$SKIP_MIGRATIONS" = "true" ]; then
     echo $(date -u) "- SKIP_MIGRATIONS=true, skipping migration steps"
 else
@@ -47,16 +55,25 @@ else
     # Generate migrations first
     python manage.py makemigrations
     
-    # First, check if we can run showmigrations without errors
+    # Try to check migration status and capture any errors
+    echo $(date -u) "- Attempting to check migration plan..."
     MIGRATION_CHECK_OUTPUT=$(python manage.py showmigrations --plan 2>&1)
     MIGRATION_CHECK_EXIT_CODE=$?
     
-    # Check for InconsistentMigrationHistory error
-    if echo "$MIGRATION_CHECK_OUTPUT" | grep -q "InconsistentMigrationHistory\|migration history"; then
-        echo $(date -u) "- InconsistentMigrationHistory detected, attempting to resolve..."
+    echo $(date -u) "- Migration check exit code: $MIGRATION_CHECK_EXIT_CODE"
+    
+    # If showmigrations fails, it's likely due to InconsistentMigrationHistory
+    if [ "$MIGRATION_CHECK_EXIT_CODE" -ne 0 ]; then
+        echo $(date -u) "- Migration check failed, checking for inconsistent migration history..."
+        echo "Migration check output:"
+        echo "$MIGRATION_CHECK_OUTPUT"
         
-        # Check if we have existing tables
-        HAS_CORE_TABLES=$(python manage.py shell -c "
+        # Check if it's the specific InconsistentMigrationHistory error
+        if echo "$MIGRATION_CHECK_OUTPUT" | grep -qi "InconsistentMigrationHistory\|migration.*history\|dependency.*before"; then
+            echo $(date -u) "- InconsistentMigrationHistory detected, attempting to resolve..."
+            
+            # Check if we have existing tables
+            HAS_CORE_TABLES=$(python manage.py shell -c "
 from django.db import connection
 try:
     table_names = connection.introspection.table_names()
@@ -67,22 +84,39 @@ try:
 except Exception:
     print('false')
 " 2>/dev/null)
-        
-        if [ "$HAS_CORE_TABLES" = "true" ]; then
-            echo $(date -u) "- Existing database detected, marking auth migrations as fake and using --fake-initial"
-            # Mark problematic auth migrations as applied to resolve dependency issues
-            python manage.py migrate auth --fake
-            python manage.py migrate --fake-initial
+            
+            echo $(date -u) "- Has core tables: $HAS_CORE_TABLES"
+            
+            if [ "$HAS_CORE_TABLES" = "true" ]; then
+                echo $(date -u) "- Existing database detected, attempting migration reset..."
+                # First, try to fake all auth migrations to resolve dependency issues
+                echo $(date -u) "- Faking auth app migrations..."
+                python manage.py migrate auth --fake || echo "Auth fake migration failed, continuing..."
+                
+                # Then try to fake initial migrations for all apps
+                echo $(date -u) "- Applying fake initial migrations..."
+                python manage.py migrate --fake-initial || echo "Fake initial failed, trying regular migrate..."
+                
+                # Finally, apply any remaining migrations
+                echo $(date -u) "- Applying remaining migrations..."
+                python manage.py migrate || echo "Final migrate had issues, but continuing..."
+            else
+                echo $(date -u) "- Fresh database detected, attempting forced migration..."
+                # For fresh database, try to force through the migration
+                python manage.py migrate || {
+                    echo $(date -u) "- Normal migrate failed, trying with --fake-initial..."
+                    python manage.py migrate --fake-initial
+                }
+            fi
         else
-            echo $(date -u) "- Fresh database detected, running normal migration despite inconsistency warning"
-            python manage.py migrate
+            echo $(date -u) "- Unknown migration error, attempting --fake-initial recovery..."
+            python manage.py migrate --fake-initial || {
+                echo $(date -u) "- Fake initial failed, trying normal migrate..."
+                python manage.py migrate
+            }
         fi
-    elif [ "$MIGRATION_CHECK_EXIT_CODE" -ne 0 ]; then
-        echo $(date -u) "- Migration check failed with unknown error, attempting --fake-initial"
-        echo "$MIGRATION_CHECK_OUTPUT"
-        python manage.py migrate --fake-initial
     else
-        # Normal migration flow when showmigrations works
+        # showmigrations succeeded, proceed with normal logic
         UNAPPLIED_MIGRATIONS=$(echo "$MIGRATION_CHECK_OUTPUT" | grep -c "^\[ \]" || echo "0")
         
         echo $(date -u) "- Found $UNAPPLIED_MIGRATIONS unapplied migrations"
