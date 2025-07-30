@@ -6,9 +6,9 @@ set -e
 # - If FORCE_FAKE_INITIAL=true: Uses --fake-initial (for existing databases)
 # - If FORCE_FRESH_MIGRATE=true: Uses normal migration (for fresh databases) 
 # - If SKIP_MIGRATIONS=true: Skips migration steps entirely
-# - If FORCE_SYNCDB=true: Uses --run-syncdb, but checks for data first
+# - If FORCE_SYNCDB=true: Uses --run-syncdb to create tables without migration history
 # - If FORCE_SYNCDB_UNSAFE=true: Uses --run-syncdb without data checks
-# - Auto-detect (default): Checks if database has existing tables and chooses appropriately
+# - Auto-detect (default): Checks if tables exist and chooses --fake-initial or migrate accordingly
 
 bash scripts/tcp-port-wait.sh $DATABASE_HOST $DATABASE_PORT
 
@@ -46,14 +46,34 @@ elif [ "$FORCE_SYNCDB_UNSAFE" = "true" ]; then
 elif [ "$SKIP_MIGRATIONS" = "true" ]; then
     echo $(date -u) "- SKIP_MIGRATIONS=true, skipping migration steps"
 else
-    # Auto-detect approach - with empty migrations table, this should work cleanly
+    # Auto-detect approach - with empty migrations table but existing tables
     echo $(date -u) "- Auto-detecting migration approach..."
     echo $(date -u) "- Running makemigrations..."
     
     if python manage.py makemigrations; then
         echo $(date -u) "- makemigrations succeeded"
-        echo $(date -u) "- Running migrate to apply all migrations..."
-        python manage.py migrate
+        
+        # Check if tables already exist
+        TABLES_EXIST=$(python manage.py shell -c "
+from django.db import connection
+try:
+    with connection.cursor() as cursor:
+        cursor.execute(\"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE '%_' LIMIT 1\")
+        table_count = cursor.fetchone()[0]
+        print(f'tables_exist:{table_count > 0}')
+except Exception as e:
+    print('tables_exist:false')
+" 2>/dev/null)
+        
+        echo $(date -u) "- Table check result: $TABLES_EXIST"
+        
+        if echo "$TABLES_EXIST" | grep -q "tables_exist:true"; then
+            echo $(date -u) "- Tables exist but migration history is empty, using --fake-initial"
+            python manage.py migrate --fake-initial
+        else
+            echo $(date -u) "- No tables found, running normal migration"
+            python manage.py migrate
+        fi
     else
         echo $(date -u) "- makemigrations failed, this shouldn't happen with empty migration table"
         echo $(date -u) "- Trying --run-syncdb as fallback..."
