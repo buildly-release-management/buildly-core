@@ -58,7 +58,7 @@ class AsyncSessionAuthBlockMiddleware:
                 {
                     "detail": (
                         "Session authentication is not allowed for this endpoint. "
-                        "Please use OAuth2 (Bearer token) authentication."
+                        "Please use JWT (Bearer token) authentication."
                     )
                 },
                 status=403,
@@ -73,7 +73,7 @@ class AsyncSessionAuthBlockMiddleware:
                 {
                     "detail": (
                         "Session authentication is not allowed for this endpoint. "
-                        "Please use OAuth2 (Bearer token) authentication."
+                        "Please use JWT (Bearer token) authentication."
                     )
                 },
                 status=403,

@@ -37,8 +37,6 @@ INSTALLED_APPS_THIRD_PARTIES = [
     'rest_framework',
     'rest_framework.authtoken',
     'rest_framework_simplejwt.token_blacklist',
-    # OAuth2 provider
-    'oauth2_provider',
     # swagger
     'drf_yasg',
     # health check
@@ -49,7 +47,7 @@ INSTALLED_APPS_THIRD_PARTIES = [
 INSTALLED_APPS_LOCAL = ['buildly', 'gateway', 'core', 'datamesh']
 
 INSTALLED_APPS = (
-        INSTALLED_APPS_DJANGO + INSTALLED_APPS_THIRD_PARTIES + INSTALLED_APPS_LOCAL
+    INSTALLED_APPS_DJANGO + INSTALLED_APPS_THIRD_PARTIES + INSTALLED_APPS_LOCAL
 )
 
 MIDDLEWARE_DJANGO = [
@@ -128,7 +126,6 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 10,
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
@@ -179,16 +176,4 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     # Add other options as needed
-}
-
-# OAuth2 Provider Settings
-OAUTH2_PROVIDER = {
-    'SCOPES': {
-        'read': 'Read scope',
-        'write': 'Write scope',
-    },
-    'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,
-    'REFRESH_TOKEN_EXPIRE_SECONDS': 86400,
-    'AUTHORIZATION_CODE_EXPIRE_SECONDS': 600,
-    'ROTATE_REFRESH_TOKEN': True,
 }

@@ -1,12 +1,13 @@
 from .base import *
 from .email import *
 
-# CORS to allow external apps auth through OAuth 2
+# CORS to allow external apps authentication through JWT
 # https://github.com/ottoyiu/django-cors-headers
 
-INSTALLED_APPS += (
+# Add corsheaders for production CORS handling
+INSTALLED_APPS = INSTALLED_APPS + [
     'corsheaders',
-)
+]
 
 MIDDLEWARE_CORS = [
     'corsheaders.middleware.CorsMiddleware',
@@ -88,21 +89,5 @@ TOKEN_SECRET_KEY = os.getenv('TOKEN_SECRET_KEY', '')
 
 USE_X_FORWARDED_HOST = True if os.getenv('USE_X_FORWARDED_HOST') == 'True' else False
 
-# Production OAuth2 Settings - Override base settings for security
-OAUTH2_PROVIDER = {
-    'SCOPES': {
-        'read': 'Read scope',
-        'write': 'Write scope',
-    },
-    'ACCESS_TOKEN_EXPIRE_SECONDS': int(os.getenv('OAUTH2_ACCESS_TOKEN_EXPIRE_SECONDS', '3600')),
-    'REFRESH_TOKEN_EXPIRE_SECONDS': int(os.getenv('OAUTH2_REFRESH_TOKEN_EXPIRE_SECONDS', '86400')),
-    'AUTHORIZATION_CODE_EXPIRE_SECONDS': int(os.getenv('OAUTH2_AUTHORIZATION_CODE_EXPIRE_SECONDS', '600')),
-    'ROTATE_REFRESH_TOKEN': True if os.getenv('OAUTH2_ROTATE_REFRESH_TOKEN', 'True') == 'True' else False,
-    # Production security settings
-    'APPLICATION_MODEL': 'oauth2_provider.Application',
-    'ACCESS_TOKEN_MODEL': 'oauth2_provider.AccessToken',
-    'REFRESH_TOKEN_MODEL': 'oauth2_provider.RefreshToken',
-    'REQUEST_APPROVAL_PROMPT': 'force',  # Always require approval in production
-}
-
-INSTALLED_APPS += ('django.contrib.postgres',)
+# Add PostgreSQL support
+INSTALLED_APPS = INSTALLED_APPS + ['django.contrib.postgres']
