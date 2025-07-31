@@ -1,47 +1,31 @@
 # Frontend Authentication Guide
 
-This guide explains how to integrate your frontend application with Buildly Core's OAuth2 authentication system.
+This guide explains how to integrate your frontend application with Buildly Core's JWT authentication system.
 
 ## Overview
 
-Buildly Core uses OAuth2 for API authentication, providing secure access to protected resources. This guide covers the complete integration process for different frontend frameworks.
+Buildly Core uses JWT (JSON Web Tokens) for API authentication, providing secure access to protected resources. The authentication flow is simple: login with username/password to get JWT tokens, then use those tokens for subsequent API requests.
 
-## OAuth2 Configuration
+## Authentication Flow
 
-### 1. Admin Setup
+1. **Login**: Send username/password to `/token/` endpoint
+2. **Receive Tokens**: Get access token (1 hour) and refresh token (1 day)
+3. **API Requests**: Include access token in Authorization header
+4. **Token Refresh**: Use refresh token to get new access token when needed
 
-Before integrating your frontend, configure OAuth2 in the Buildly Core admin interface:
+## JWT Configuration
 
-1. **Navigate to OAuth2 Applications**: `https://your-buildly-core.com/admin/oauth2_provider/application/`
-2. **Create New Application**:
-   - **Name**: Your application name (e.g., "My React App")
-   - **Client Type**: 
-     - `Public` for SPAs (React, Vue, Angular)
-     - `Confidential` for server-side applications
-   - **Authorization Grant Type**: `Authorization code`
-   - **Redirect URIs**: Add your callback URLs (one per line):
-     ```
-     http://localhost:3000/auth/callback
-     https://yourapp.com/auth/callback
-     ```
-
-3. **Save and Copy Credentials**: Note the Client ID (and Client Secret for confidential apps)
-
-### 2. Application Configuration
-
-Store your OAuth2 configuration securely:
+### Basic Configuration
 
 ```javascript
 // config/auth.js
 export const authConfig = {
-  clientId: process.env.REACT_APP_OAUTH_CLIENT_ID,
-  clientSecret: process.env.REACT_APP_OAUTH_CLIENT_SECRET, // Only for server-side
-  authorizationUrl: `${process.env.REACT_APP_API_URL}/o/authorize/`,
-  tokenUrl: `${process.env.REACT_APP_API_URL}/o/token/`,
-  revokeUrl: `${process.env.REACT_APP_API_URL}/o/revoke_token/`,
-  redirectUrl: `${window.location.origin}/auth/callback`,
-  scope: 'read write',
-  apiBaseUrl: process.env.REACT_APP_API_URL
+  apiBaseUrl: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+  loginUrl: '/token/',
+  refreshUrl: '/token/refresh/',
+  verifyUrl: '/token/verify/',
+  tokenKey: 'buildly_access_token',
+  refreshTokenKey: 'buildly_refresh_token'
 };
 ```
 
@@ -61,25 +45,27 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [tokens, setTokens] = useState(() => {
     return {
-      access: localStorage.getItem('access_token'),
-      refresh: localStorage.getItem('refresh_token')
+      access: localStorage.getItem(authConfig.tokenKey),
+      refresh: localStorage.getItem(authConfig.refreshTokenKey)
     };
   });
 
   // Initialize auth state
   useEffect(() => {
-    if (tokens.access) {
+    if (tokens.access && !isTokenExpired(tokens.access)) {
       fetchUserProfile();
+    } else if (tokens.refresh) {
+      refreshToken();
     } else {
       setLoading(false);
     }
-  }, [tokens.access]);
+  }, []);
 
   // Fetch user profile
   const fetchUserProfile = async () => {
     try {
-      const response = await apiRequest('/users/me/');
-      setUser(response.data);
+      const user = await apiRequest('/coreuser/me/');
+      setUser(user);
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
       logout();
@@ -88,61 +74,34 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Start OAuth2 flow
-  const login = () => {
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: authConfig.clientId,
-      redirect_uri: authConfig.redirectUrl,
-      scope: authConfig.scope,
-      state: generateRandomState() // CSRF protection
-    });
-
-    // Store state for validation
-    sessionStorage.setItem('oauth_state', params.get('state'));
-    
-    window.location.href = `${authConfig.authorizationUrl}?${params}`;
-  };
-
-  // Handle OAuth2 callback
-  const handleCallback = async (code, state) => {
-    // Validate state parameter
-    const storedState = sessionStorage.getItem('oauth_state');
-    if (state !== storedState) {
-      throw new Error('Invalid state parameter');
-    }
-    sessionStorage.removeItem('oauth_state');
-
+  // Login with username/password
+  const login = async (username, password) => {
     try {
-      const response = await fetch(authConfig.tokenUrl, {
+      const response = await fetch(`${authConfig.apiBaseUrl}${authConfig.loginUrl}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          client_id: authConfig.clientId,
-          client_secret: authConfig.clientSecret, // Omit for public clients
-          code: code,
-          redirect_uri: authConfig.redirectUrl
-        })
+        body: JSON.stringify({ username, password })
       });
 
       if (!response.ok) {
-        throw new Error('Token exchange failed');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Login failed');
       }
 
       const tokenData = await response.json();
       
       // Store tokens
-      localStorage.setItem('access_token', tokenData.access_token);
-      localStorage.setItem('refresh_token', tokenData.refresh_token);
+      localStorage.setItem(authConfig.tokenKey, tokenData.access);
+      localStorage.setItem(authConfig.refreshTokenKey, tokenData.refresh);
       
       setTokens({
-        access: tokenData.access_token,
-        refresh: tokenData.refresh_token
+        access: tokenData.access,
+        refresh: tokenData.refresh
       });
 
+      await fetchUserProfile();
       return tokenData;
     } catch (error) {
       console.error('Authentication failed:', error);
@@ -158,17 +117,12 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const response = await fetch(authConfig.tokenUrl, {
+      const response = await fetch(`${authConfig.apiBaseUrl}${authConfig.refreshUrl}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: authConfig.clientId,
-          client_secret: authConfig.clientSecret, // Omit for public clients
-          refresh_token: tokens.refresh
-        })
+        body: JSON.stringify({ refresh: tokens.refresh })
       });
 
       if (!response.ok) {
@@ -177,17 +131,14 @@ export const AuthProvider = ({ children }) => {
 
       const tokenData = await response.json();
       
-      localStorage.setItem('access_token', tokenData.access_token);
-      if (tokenData.refresh_token) {
-        localStorage.setItem('refresh_token', tokenData.refresh_token);
-      }
+      localStorage.setItem(authConfig.tokenKey, tokenData.access);
       
-      setTokens({
-        access: tokenData.access_token,
-        refresh: tokenData.refresh_token || tokens.refresh
-      });
+      setTokens(prev => ({
+        ...prev,
+        access: tokenData.access
+      }));
 
-      return tokenData.access_token;
+      return tokenData.access;
     } catch (error) {
       console.error('Token refresh failed:', error);
       logout();
@@ -196,40 +147,18 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Logout
-  const logout = async () => {
-    if (tokens.access) {
-      try {
-        // Revoke token on server
-        await fetch(authConfig.revokeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Bearer ${tokens.access}`
-          },
-          body: new URLSearchParams({
-            token: tokens.access,
-            client_id: authConfig.clientId,
-            client_secret: authConfig.clientSecret // Omit for public clients
-          })
-        });
-      } catch (error) {
-        console.error('Token revocation failed:', error);
-      }
-    }
-
-    // Clear local storage
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    
+  const logout = () => {
+    localStorage.removeItem(authConfig.tokenKey);
+    localStorage.removeItem(authConfig.refreshTokenKey);
     setTokens({ access: null, refresh: null });
     setUser(null);
   };
 
   // Make authenticated API request
-  const apiRequest = async (endpoint, options = {}) => {
+  const apiRequest = async (endpoint, method = 'GET', data = null) => {
     let accessToken = tokens.access;
 
-    // Check if token needs refresh (simple expiry check)
+    // Check if token needs refresh
     if (accessToken && isTokenExpired(accessToken)) {
       accessToken = await refreshToken();
       if (!accessToken) {
@@ -237,41 +166,58 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    const response = await fetch(`${authConfig.apiBaseUrl}${endpoint}`, {
-      ...options,
+    const options = {
+      method,
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        ...options.headers
       }
-    });
+    };
+
+    if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      options.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(`${authConfig.apiBaseUrl}${endpoint}`, options);
 
     if (response.status === 401) {
       // Try to refresh token once
       accessToken = await refreshToken();
       if (accessToken) {
-        // Retry with new token
-        return fetch(`${authConfig.apiBaseUrl}${endpoint}`, {
-          ...options,
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            ...options.headers
-          }
-        });
+        options.headers['Authorization'] = `Bearer ${accessToken}`;
+        const retryResponse = await fetch(`${authConfig.apiBaseUrl}${endpoint}`, options);
+        if (!retryResponse.ok) {
+          throw new Error(`API request failed: ${retryResponse.statusText}`);
+        }
+        return retryResponse.json();
+      } else {
+        throw new Error('Authentication required');
       }
     }
 
-    return response;
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  };
+
+  // Helper function to check if token is expired
+  const isTokenExpired = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return Date.now() >= payload.exp * 1000;
+    } catch {
+      return true;
+    }
   };
 
   const value = {
     user,
     loading,
-    isAuthenticated: !!tokens.access,
+    isAuthenticated: !!tokens.access && !isTokenExpired(tokens.access),
     login,
     logout,
-    handleCallback,
     apiRequest,
     refreshToken
   };
@@ -290,105 +236,100 @@ export const useAuth = () => {
   }
   return context;
 };
-
-// Utility functions
-const generateRandomState = () => {
-  return Math.random().toString(36).substring(2, 15) + 
-         Math.random().toString(36).substring(2, 15);
-};
-
-const isTokenExpired = (token) => {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.exp * 1000 < Date.now();
-  } catch {
-    return true;
-  }
-};
 ```
 
-### React Components
+### Login Component
 
 ```javascript
-// components/AuthCallback.js
-import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+// components/LoginForm.js
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
-const AuthCallback = () => {
+const LoginForm = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { handleCallback } = useAuth();
+  const { login } = useAuth();
+  const [formData, setFormData] = useState({
+    username: '',
+    password: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const processCallback = async () => {
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
-      const error = searchParams.get('error');
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
 
-      if (error) {
-        console.error('OAuth2 error:', error);
-        navigate('/login?error=oauth_failed');
-        return;
-      }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-      if (!code) {
-        navigate('/login?error=no_code');
-        return;
-      }
-
-      try {
-        await handleCallback(code, state);
-        navigate('/dashboard');
-      } catch (error) {
-        console.error('Authentication failed:', error);
-        navigate('/login?error=auth_failed');
-      }
-    };
-
-    processCallback();
-  }, [searchParams, handleCallback, navigate]);
+    try {
+      await login(formData.username, formData.password);
+      navigate('/dashboard');
+    } catch (error) {
+      setError(error.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="auth-callback">
-      <p>Processing authentication...</p>
+    <div className="login-container">
+      <form onSubmit={handleSubmit} className="login-form">
+        <h2>Login to Buildly</h2>
+        
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+        
+        <div className="form-group">
+          <label htmlFor="username">Username:</label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            value={formData.username}
+            onChange={handleChange}
+            required
+          />
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="password">Password:</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+          />
+        </div>
+        
+        <button type="submit" disabled={loading}>
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
+      </form>
     </div>
   );
 };
 
-export default AuthCallback;
+export default LoginForm;
 ```
 
-```javascript
-// components/LoginButton.js
-import { useAuth } from '../hooks/useAuth';
-
-const LoginButton = () => {
-  const { login, logout, isAuthenticated, user } = useAuth();
-
-  if (isAuthenticated) {
-    return (
-      <div className="user-menu">
-        <span>Welcome, {user?.username}</span>
-        <button onClick={logout} className="logout-btn">
-          Logout
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <button onClick={login} className="login-btn">
-      Login with Buildly
-    </button>
-  );
-};
-
-export default LoginButton;
-```
+### Protected Route Component
 
 ```javascript
 // components/ProtectedRoute.js
+import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const ProtectedRoute = ({ children }) => {
@@ -399,12 +340,7 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="auth-required">
-        <p>Please log in to access this page.</p>
-        <LoginButton />
-      </div>
-    );
+    return <Navigate to="/login" replace />;
   }
 
   return children;
@@ -413,403 +349,589 @@ const ProtectedRoute = ({ children }) => {
 export default ProtectedRoute;
 ```
 
-### Vue.js Implementation
+### App Setup
 
 ```javascript
-// stores/auth.js (Pinia)
+// App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './hooks/useAuth';
+import LoginForm from './components/LoginForm';
+import ProtectedRoute from './components/ProtectedRoute';
+import Dashboard from './components/Dashboard';
+
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<LoginForm />} />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
+}
+
+export default App;
+```
+
+## Vue.js Implementation
+
+### Pinia Store (Vue 3)
+
+```javascript
+// stores/auth.js
 import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
 import { authConfig } from '../config/auth';
 
-export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    user: null,
-    tokens: {
-      access: localStorage.getItem('access_token'),
-      refresh: localStorage.getItem('refresh_token')
-    },
-    loading: false
-  }),
+export const useAuthStore = defineStore('auth', () => {
+  const user = ref(null);
+  const tokens = ref({
+    access: localStorage.getItem(authConfig.tokenKey),
+    refresh: localStorage.getItem(authConfig.refreshTokenKey)
+  });
+  const loading = ref(false);
 
-  getters: {
-    isAuthenticated: (state) => !!state.tokens.access
-  },
+  const isAuthenticated = computed(() => {
+    return !!tokens.value.access && !isTokenExpired(tokens.value.access);
+  });
 
-  actions: {
-    async login() {
-      const params = new URLSearchParams({
-        response_type: 'code',
-        client_id: authConfig.clientId,
-        redirect_uri: authConfig.redirectUrl,
-        scope: authConfig.scope,
-        state: this.generateState()
-      });
-
-      sessionStorage.setItem('oauth_state', params.get('state'));
-      window.location.href = `${authConfig.authorizationUrl}?${params}`;
-    },
-
-    async handleCallback(code, state) {
-      const storedState = sessionStorage.getItem('oauth_state');
-      if (state !== storedState) {
-        throw new Error('Invalid state parameter');
-      }
-      sessionStorage.removeItem('oauth_state');
-
-      const response = await fetch(authConfig.tokenUrl, {
+  const login = async (username, password) => {
+    loading.value = true;
+    try {
+      const response = await fetch(`${authConfig.apiBaseUrl}${authConfig.loginUrl}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          client_id: authConfig.clientId,
-          code: code,
-          redirect_uri: authConfig.redirectUrl
-        })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password })
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Login failed');
+      }
 
       const tokenData = await response.json();
       
-      localStorage.setItem('access_token', tokenData.access_token);
-      localStorage.setItem('refresh_token', tokenData.refresh_token);
+      localStorage.setItem(authConfig.tokenKey, tokenData.access);
+      localStorage.setItem(authConfig.refreshTokenKey, tokenData.refresh);
       
-      this.tokens = {
-        access: tokenData.access_token,
-        refresh: tokenData.refresh_token
+      tokens.value = {
+        access: tokenData.access,
+        refresh: tokenData.refresh
       };
 
-      await this.fetchUser();
-    },
+      await fetchUserProfile();
+      return tokenData;
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
 
-    async fetchUser() {
-      try {
-        const response = await this.apiRequest('/users/me/');
-        this.user = response.data;
-      } catch (error) {
-        console.error('Failed to fetch user:', error);
-        this.logout();
+  const logout = () => {
+    localStorage.removeItem(authConfig.tokenKey);
+    localStorage.removeItem(authConfig.refreshTokenKey);
+    tokens.value = { access: null, refresh: null };
+    user.value = null;
+  };
+
+  const fetchUserProfile = async () => {
+    try {
+      const userData = await apiRequest('/coreuser/me/');
+      user.value = userData;
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+      logout();
+    }
+  };
+
+  const apiRequest = async (endpoint, method = 'GET', data = null) => {
+    let accessToken = tokens.value.access;
+
+    if (accessToken && isTokenExpired(accessToken)) {
+      accessToken = await refreshToken();
+      if (!accessToken) {
+        throw new Error('Authentication required');
       }
-    },
+    }
 
-    async logout() {
-      if (this.tokens.access) {
-        try {
-          await fetch(authConfig.revokeUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Authorization': `Bearer ${this.tokens.access}`
-            },
-            body: new URLSearchParams({
-              token: this.tokens.access,
-              client_id: authConfig.clientId
-            })
-          });
-        } catch (error) {
-          console.error('Token revocation failed:', error);
-        }
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
       }
+    };
 
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      this.tokens = { access: null, refresh: null };
-      this.user = null;
-    },
+    if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      options.body = JSON.stringify(data);
+    }
 
-    async apiRequest(endpoint, options = {}) {
-      const response = await fetch(`${authConfig.apiBaseUrl}${endpoint}`, {
-        ...options,
+    const response = await fetch(`${authConfig.apiBaseUrl}${endpoint}`, options);
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  };
+
+  const refreshToken = async () => {
+    if (!tokens.value.refresh) {
+      logout();
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${authConfig.apiBaseUrl}${authConfig.refreshUrl}`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.tokens.access}`,
           'Content-Type': 'application/json',
-          ...options.headers
-        }
+        },
+        body: JSON.stringify({ refresh: tokens.value.refresh })
       });
 
-      if (response.status === 401) {
-        await this.refreshToken();
-        // Retry request with new token
-        return fetch(`${authConfig.apiBaseUrl}${endpoint}`, {
-          ...options,
-          headers: {
-            'Authorization': `Bearer ${this.tokens.access}`,
-            'Content-Type': 'application/json',
-            ...options.headers
-          }
-        });
+      if (!response.ok) {
+        throw new Error('Token refresh failed');
       }
 
-      return response;
-    },
+      const tokenData = await response.json();
+      
+      localStorage.setItem(authConfig.tokenKey, tokenData.access);
+      tokens.value.access = tokenData.access;
 
-    generateState() {
-      return Math.random().toString(36).substring(2, 15) + 
-             Math.random().toString(36).substring(2, 15);
+      return tokenData.access;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      logout();
+      return null;
     }
-  }
+  };
+
+  const isTokenExpired = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return Date.now() >= payload.exp * 1000;
+    } catch {
+      return true;
+    }
+  };
+
+  return {
+    user,
+    tokens,
+    loading,
+    isAuthenticated,
+    login,
+    logout,
+    fetchUserProfile,
+    apiRequest,
+    refreshToken
+  };
 });
 ```
 
-### Angular Implementation
+### Vue Login Component
+
+```vue
+<!-- components/LoginForm.vue -->
+<template>
+  <div class="login-container">
+    <form @submit.prevent="handleSubmit" class="login-form">
+      <h2>Login to Buildly</h2>
+      
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+      
+      <div class="form-group">
+        <label for="username">Username:</label>
+        <input
+          v-model="formData.username"
+          type="text"
+          id="username"
+          name="username"
+          required
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password:</label>
+        <input
+          v-model="formData.password"
+          type="password"
+          id="password"
+          name="password"
+          required
+        />
+      </div>
+      
+      <button type="submit" :disabled="loading">
+        {{ loading ? 'Logging in...' : 'Login' }}
+      </button>
+    </form>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
+
+const router = useRouter();
+const authStore = useAuthStore();
+
+const formData = ref({
+  username: '',
+  password: ''
+});
+
+const loading = ref(false);
+const error = ref('');
+
+const handleSubmit = async () => {
+  loading.value = true;
+  error.value = '';
+
+  try {
+    await authStore.login(formData.value.username, formData.value.password);
+    router.push('/dashboard');
+  } catch (err) {
+    error.value = err.message || 'Login failed';
+  } finally {
+    loading.value = false;
+  }
+};
+</script>
+```
+
+## Angular Implementation
+
+### Auth Service
 
 ```typescript
 // services/auth.service.ts
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { Router } from '@angular/router';
+import { BehaviorSubject, Observable, throwError } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
+import { environment } from '../environments/environment';
 
-export interface User {
+interface LoginResponse {
+  access: string;
+  refresh: string;
+}
+
+interface User {
   id: number;
   username: string;
   email: string;
-}
-
-export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
+  first_name: string;
+  last_name: string;
 }
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private currentUserSubject = new BehaviorSubject<User | null>(null);
-  public currentUser$ = this.currentUserSubject.asObservable();
+  private apiUrl = environment.apiUrl;
+  private tokenKey = 'buildly_access_token';
+  private refreshTokenKey = 'buildly_refresh_token';
+  
+  private userSubject = new BehaviorSubject<User | null>(null);
+  public user$ = this.userSubject.asObservable();
+  
+  private tokenSubject = new BehaviorSubject<string | null>(
+    localStorage.getItem(this.tokenKey)
+  );
+  public token$ = this.tokenSubject.asObservable();
 
-  private authConfig = {
-    clientId: environment.oauthClientId,
-    authorizationUrl: `${environment.apiUrl}/o/authorize/`,
-    tokenUrl: `${environment.apiUrl}/o/token/`,
-    revokeUrl: `${environment.apiUrl}/o/revoke_token/`,
-    redirectUrl: `${window.location.origin}/auth/callback`,
-    scope: 'read write'
-  };
-
-  constructor(
-    private http: HttpClient,
-    private router: Router
-  ) {
+  constructor(private http: HttpClient) {
     this.initializeAuth();
   }
 
   private initializeAuth(): void {
-    const token = localStorage.getItem('access_token');
-    if (token) {
+    const token = localStorage.getItem(this.tokenKey);
+    if (token && !this.isTokenExpired(token)) {
       this.fetchUserProfile().subscribe();
+    } else {
+      this.logout();
     }
   }
 
-  login(): void {
-    const state = this.generateState();
-    sessionStorage.setItem('oauth_state', state);
-
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: this.authConfig.clientId,
-      redirect_uri: this.authConfig.redirectUrl,
-      scope: this.authConfig.scope,
-      state: state
-    });
-
-    window.location.href = `${this.authConfig.authorizationUrl}?${params}`;
-  }
-
-  async handleCallback(code: string, state: string): Promise<void> {
-    const storedState = sessionStorage.getItem('oauth_state');
-    if (state !== storedState) {
-      throw new Error('Invalid state parameter');
-    }
-    sessionStorage.removeItem('oauth_state');
-
-    const body = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: this.authConfig.clientId,
-      code: code,
-      redirect_uri: this.authConfig.redirectUrl
-    });
-
-    const headers = new HttpHeaders({
-      'Content-Type': 'application/x-www-form-urlencoded'
-    });
-
-    try {
-      const tokens = await this.http.post<AuthTokens>(
-        this.authConfig.tokenUrl,
-        body.toString(),
-        { headers }
-      ).toPromise();
-
-      if (tokens) {
-        localStorage.setItem('access_token', tokens.access_token);
-        localStorage.setItem('refresh_token', tokens.refresh_token);
-        
+  login(username: string, password: string): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>(`${this.apiUrl}/token/`, {
+      username,
+      password
+    }).pipe(
+      tap(response => {
+        localStorage.setItem(this.tokenKey, response.access);
+        localStorage.setItem(this.refreshTokenKey, response.refresh);
+        this.tokenSubject.next(response.access);
         this.fetchUserProfile().subscribe();
-      }
-    } catch (error) {
-      console.error('Token exchange failed:', error);
-      throw error;
-    }
+      }),
+      catchError(error => {
+        console.error('Login failed:', error);
+        return throwError(error);
+      })
+    );
   }
 
   logout(): void {
-    const token = localStorage.getItem('access_token');
-    
-    if (token) {
-      const body = new URLSearchParams({
-        token: token,
-        client_id: this.authConfig.clientId
-      });
+    localStorage.removeItem(this.tokenKey);
+    localStorage.removeItem(this.refreshTokenKey);
+    this.tokenSubject.next(null);
+    this.userSubject.next(null);
+  }
 
-      this.http.post(this.authConfig.revokeUrl, body.toString(), {
-        headers: new HttpHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Bearer ${token}`
-        })
-      }).subscribe();
+  refreshToken(): Observable<{access: string}> {
+    const refresh = localStorage.getItem(this.refreshTokenKey);
+    if (!refresh) {
+      this.logout();
+      return throwError('No refresh token');
     }
 
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    this.currentUserSubject.next(null);
-    this.router.navigate(['/login']);
+    return this.http.post<{access: string}>(`${this.apiUrl}/token/refresh/`, {
+      refresh
+    }).pipe(
+      tap(response => {
+        localStorage.setItem(this.tokenKey, response.access);
+        this.tokenSubject.next(response.access);
+      }),
+      catchError(error => {
+        console.error('Token refresh failed:', error);
+        this.logout();
+        return throwError(error);
+      })
+    );
   }
 
-  private fetchUserProfile(): Observable<User> {
-    return this.http.get<User>('/api/users/me/');
-  }
-
-  get isAuthenticated(): boolean {
-    return !!localStorage.getItem('access_token');
+  fetchUserProfile(): Observable<User> {
+    return this.http.get<User>(`${this.apiUrl}/coreuser/me/`).pipe(
+      tap(user => this.userSubject.next(user)),
+      catchError(error => {
+        console.error('Failed to fetch user profile:', error);
+        this.logout();
+        return throwError(error);
+      })
+    );
   }
 
   getAuthHeaders(): HttpHeaders {
-    const token = localStorage.getItem('access_token');
+    const token = this.tokenSubject.value;
     return new HttpHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     });
   }
 
-  private generateState(): string {
-    return Math.random().toString(36).substring(2, 15) + 
-           Math.random().toString(36).substring(2, 15);
+  isAuthenticated(): boolean {
+    const token = this.tokenSubject.value;
+    return !!token && !this.isTokenExpired(token);
+  }
+
+  private isTokenExpired(token: string): boolean {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return Date.now() >= payload.exp * 1000;
+    } catch {
+      return true;
+    }
   }
 }
 ```
 
-## Best Practices
+### Angular Login Component
 
-### Security
+```typescript
+// components/login.component.ts
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { AuthService } from '../services/auth.service';
 
-1. **Use HTTPS**: Always use HTTPS in production
-2. **Validate State Parameter**: Prevent CSRF attacks by validating the state parameter
-3. **Store Tokens Securely**: Consider using secure HTTP-only cookies for token storage
-4. **Token Expiration**: Implement proper token refresh logic
-5. **Logout Handling**: Always revoke tokens on logout
+@Component({
+  selector: 'app-login',
+  template: `
+    <div class="login-container">
+      <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-form">
+        <h2>Login to Buildly</h2>
+        
+        <div *ngIf="errorMessage" class="error-message">
+          {{ errorMessage }}
+        </div>
+        
+        <div class="form-group">
+          <label for="username">Username:</label>
+          <input
+            type="text"
+            id="username"
+            formControlName="username"
+            required
+          />
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password:</label>
+          <input
+            type="password"
+            id="password"
+            formControlName="password"
+            required
+          />
+        </div>
+        
+        <button type="submit" [disabled]="loading || loginForm.invalid">
+          {{ loading ? 'Logging in...' : 'Login' }}
+        </button>
+      </form>
+    </div>
+  `
+})
+export class LoginComponent {
+  loginForm: FormGroup;
+  loading = false;
+  errorMessage = '';
+
+  constructor(
+    private fb: FormBuilder,
+    private authService: AuthService,
+    private router: Router
+  ) {
+    this.loginForm = this.fb.group({
+      username: ['', Validators.required],
+      password: ['', Validators.required]
+    });
+  }
+
+  onSubmit(): void {
+    if (this.loginForm.valid) {
+      this.loading = true;
+      this.errorMessage = '';
+
+      const { username, password } = this.loginForm.value;
+
+      this.authService.login(username, password).subscribe({
+        next: () => {
+          this.router.navigate(['/dashboard']);
+        },
+        error: (error) => {
+          this.errorMessage = error.error?.detail || 'Login failed';
+          this.loading = false;
+        },
+        complete: () => {
+          this.loading = false;
+        }
+      });
+    }
+  }
+}
+```
+
+## API Usage Examples
+
+### Making Authenticated Requests
+
+```javascript
+// Get user organizations
+const organizations = await apiRequest('/organization/');
+
+// Create a new organization
+const newOrg = await apiRequest('/organization/', 'POST', {
+  name: 'My Organization',
+  organization_type: 'Developer'
+});
+
+// Update user profile
+const updatedUser = await apiRequest('/coreuser/me/', 'PATCH', {
+  first_name: 'John',
+  last_name: 'Doe'
+});
+```
 
 ### Error Handling
 
 ```javascript
-// Comprehensive error handling
-const handleAuthError = (error, context) => {
-  console.error(`Authentication error in ${context}:`, error);
-  
-  switch (error.message) {
-    case 'invalid_client':
-      // Handle invalid client credentials
-      break;
-    case 'invalid_grant':
-      // Handle invalid authorization code or refresh token
-      logout();
-      break;
-    case 'access_denied':
-      // Handle user denial
-      break;
-    default:
-      // Handle generic errors
-      break;
+try {
+  const data = await apiRequest('/some-endpoint/');
+  // Handle success
+} catch (error) {
+  if (error.message === 'Authentication required') {
+    // Redirect to login
+    navigate('/login');
+  } else {
+    // Handle other errors
+    console.error('API Error:', error.message);
   }
-};
+}
 ```
 
-### Token Management
+## Environment Variables
 
-```javascript
-// Token refresh with retry logic
-const apiRequestWithRetry = async (endpoint, options = {}, retries = 1) => {
-  try {
-    return await apiRequest(endpoint, options);
-  } catch (error) {
-    if (error.status === 401 && retries > 0) {
-      await refreshToken();
-      return apiRequestWithRetry(endpoint, options, retries - 1);
-    }
-    throw error;
-  }
-};
+### Development (.env.development)
+```
+REACT_APP_API_URL=http://localhost:8000
 ```
 
-## Testing
-
-### Unit Tests
-
-```javascript
-// __tests__/auth.test.js
-import { render, screen, fireEvent } from '@testing-library/react';
-import { AuthProvider, useAuth } from '../hooks/useAuth';
-
-const TestComponent = () => {
-  const { login, isAuthenticated } = useAuth();
-  return (
-    <div>
-      <span>{isAuthenticated ? 'Authenticated' : 'Not authenticated'}</span>
-      <button onClick={login}>Login</button>
-    </div>
-  );
-};
-
-test('should initiate login flow', () => {
-  const mockLocation = { href: '' };
-  Object.defineProperty(window, 'location', {
-    value: mockLocation,
-    writable: true
-  });
-
-  render(
-    <AuthProvider>
-      <TestComponent />
-    </AuthProvider>
-  );
-
-  fireEvent.click(screen.getByText('Login'));
-  
-  expect(mockLocation.href).toContain('/o/authorize/');
-  expect(mockLocation.href).toContain('response_type=code');
-});
+### Production (.env.production)
 ```
+REACT_APP_API_URL=https://api.yourdomain.com
+```
+
+## Security Best Practices
+
+1. **Token Storage**: Store tokens in localStorage or sessionStorage, not in cookies for SPA
+2. **Token Expiry**: Always check token expiry before making requests
+3. **Automatic Refresh**: Implement automatic token refresh before expiry
+4. **Error Handling**: Handle 401 responses gracefully with re-authentication
+5. **HTTPS**: Always use HTTPS in production
+6. **Environment Variables**: Store API URLs in environment variables
+
+## Common Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/token/` | POST | Login (get tokens) |
+| `/token/refresh/` | POST | Refresh access token |
+| `/token/verify/` | POST | Verify token validity |
+| `/coreuser/` | GET | List users |
+| `/coreuser/me/` | GET | Get current user |
+| `/organization/` | GET/POST | Organizations |
+| `/logicmodule/` | GET/POST | Logic modules |
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Redirect URI Mismatch**: Ensure redirect URIs in admin match exactly
-2. **CORS Issues**: Configure CORS_ORIGIN_WHITELIST in Buildly Core
-3. **Token Expiration**: Implement proper refresh token logic
-4. **State Parameter Validation**: Always validate state parameter to prevent CSRF
+1. **401 Unauthorized**: Token expired or invalid - refresh or re-login
+2. **403 Forbidden**: User doesn't have permission - check user permissions
+3. **CORS Errors**: Configure CORS settings in Buildly Core
+4. **Token Refresh Loop**: Check token expiry logic and refresh implementation
 
-### Debug Mode
+### Debug Tips
 
 ```javascript
-// Enable debug logging
-const debugAuth = {
-  logTokens: process.env.NODE_ENV === 'development',
-  logRequests: process.env.NODE_ENV === 'development'
-};
-
-if (debugAuth.logTokens) {
-  console.log('Access token:', tokens.access?.substring(0, 20) + '...');
+// Log token payload to debug expiry
+const token = localStorage.getItem('buildly_access_token');
+if (token) {
+  const payload = JSON.parse(atob(token.split('.')[1]));
+  console.log('Token expires:', new Date(payload.exp * 1000));
+  console.log('Current time:', new Date());
 }
 ```
 
-For more information, see the main [README.md](README.md) and [DEPLOYMENT.md](DEPLOYMENT.md) guides.
+This guide provides everything needed to integrate with Buildly Core's JWT authentication system. The examples are production-ready and include proper error handling, token refresh, and security best practices.

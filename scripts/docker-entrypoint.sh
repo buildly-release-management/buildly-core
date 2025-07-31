@@ -41,53 +41,91 @@ if [ "$SKIP_MIGRATIONS" = "true" ]; then
     echo "$(date -u) - SKIP_MIGRATIONS=true: Skipping all migration steps"
     
 elif [ "$FORCE_SYNCDB" = "true" ]; then
-    echo "$(date -u) - FORCE_SYNCDB=true: Using --run-syncdb with schema verification"
-    echo "$(date -u) - This approach creates tables and verifies schema matches models"
+    echo "$(date -u) - FORCE_SYNCDB=true: Using --run-syncdb with comprehensive database sync"
+    echo "$(date -u) - This approach creates missing tables and fixes schema issues"
     
     python manage.py makemigrations
+    
+    # First, try to create any missing tables with run-syncdb
+    echo "$(date -u) - Creating missing tables with --run-syncdb..."
     python manage.py migrate --run-syncdb
     
-    # Verify and fix schema after syncdb
-    echo "$(date -u) - Verifying database schema matches Django models..."
+    # Then apply any pending migrations normally
+    echo "$(date -u) - Applying any remaining migrations..."
+    python manage.py migrate
+    
+    # Comprehensive schema verification and fixing
+    echo "$(date -u) - Verifying and fixing database schema..."
     python manage.py shell -c "
 from django.db import connection
 from django.apps import apps
+from django.core.management import call_command
 
-print('=== Schema Verification ===')
-schema_issues_found = False
+print('=== Comprehensive Database Verification ===')
+issues_found = False
 
+# Check for missing tables and create them
 with connection.cursor() as cursor:
+    # Get all existing table names
+    cursor.execute('''
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    ''')
+    existing_tables = {row[0] for row in cursor.fetchall()}
+    
     for app_config in apps.get_app_configs():
         for model in app_config.get_models():
             table_name = model._meta.db_table
             
-            # Get existing columns
-            cursor.execute('''
-                SELECT column_name FROM information_schema.columns 
-                WHERE table_name = %s AND table_schema = 'public'
-            ''', [table_name])
-            existing_columns = {row[0] for row in cursor.fetchall()}
-            
-            # Check for missing columns
-            missing_columns = []
-            for field in model._meta.fields:
-                if field.column not in existing_columns:
-                    missing_columns.append(field)
-            
-            if missing_columns:
-                schema_issues_found = True
-                print(f'\\n⚠️  Table {table_name} missing {len(missing_columns)} columns')
+            if table_name not in existing_tables:
+                issues_found = True
+                print(f'\\n⚠️  Missing table: {table_name}')
+                try:
+                    # Create the table using schema editor
+                    with connection.schema_editor() as schema_editor:
+                        schema_editor.create_model(model)
+                    print(f'   ✓ Created table: {table_name}')
+                    existing_tables.add(table_name)
+                except Exception as e:
+                    print(f'   ✗ Failed to create table {table_name}: {e}')
+            else:
+                # Check for missing columns in existing tables
+                cursor.execute('''
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = %s AND table_schema = 'public'
+                ''', [table_name])
+                existing_columns = {row[0] for row in cursor.fetchall()}
                 
-                for field in missing_columns:
-                    try:
-                        # Use Django's schema editor for safe column addition
-                        with connection.schema_editor() as schema_editor:
-                            schema_editor.add_field(model, field)
-                        print(f'   ✓ Added {field.column}')
-                    except Exception as e:
-                        print(f'   ✗ Failed to add {field.column}: {e}')
+                missing_columns = []
+                for field in model._meta.fields:
+                    if field.column not in existing_columns:
+                        missing_columns.append(field)
+                
+                if missing_columns:
+                    issues_found = True
+                    print(f'\\n⚠️  Table {table_name} missing {len(missing_columns)} columns')
+                    
+                    for field in missing_columns:
+                        try:
+                            with connection.schema_editor() as schema_editor:
+                                schema_editor.add_field(model, field)
+                            print(f'   ✓ Added column: {field.column}')
+                        except Exception as e:
+                            print(f'   ✗ Failed to add column {field.column}: {e}')
 
-print('✓ Schema verification completed' if not schema_issues_found else '✓ Schema issues resolved')
+# Special handling for JWT token blacklist tables (critical for authentication)
+jwt_tables = ['token_blacklist_outstandingtoken', 'token_blacklist_blacklistedtoken']
+for table in jwt_tables:
+    if table not in existing_tables:
+        print(f'\\n⚠️  Critical JWT table missing: {table}')
+        try:
+            # Force create JWT tables by running token_blacklist migrations
+            call_command('migrate', 'token_blacklist', verbosity=1)
+            print(f'   ✓ Created JWT token blacklist tables')
+        except Exception as e:
+            print(f'   ✗ Failed to create JWT tables: {e}')
+
+print('\\n✓ Database verification completed' if not issues_found else '✓ Database issues resolved')
 "
     
 elif [ "$FORCE_FAKE" = "true" ]; then
