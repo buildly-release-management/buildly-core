@@ -50,6 +50,89 @@ elif [ "$FORCE_SYNCDB" = "true" ]; then
     python manage.py makemigrations
     python manage.py migrate --run-syncdb
     
+    # After syncdb, verify schema matches models and fix any missing columns
+    echo $(date -u) "- Verifying schema matches current models..."
+    python manage.py shell -c "
+from django.db import connection
+from django.apps import apps
+from django.core.management.color import no_style
+
+print('=== Post-syncdb Schema Verification ===')
+
+with connection.cursor() as cursor:
+    schema_fixes_needed = False
+    
+    # Check each model for missing columns
+    for app_config in apps.get_app_configs():
+        for model in app_config.get_models():
+            table_name = model._meta.db_table
+            
+            # Get existing columns from database
+            try:
+                cursor.execute(\"\"\"
+                    SELECT column_name, data_type, is_nullable, column_default 
+                    FROM information_schema.columns 
+                    WHERE table_name = %s AND table_schema = 'public'
+                \"\"\", [table_name])
+                existing_columns = {row[0]: {'type': row[1], 'nullable': row[2], 'default': row[3]} 
+                                  for row in cursor.fetchall()}
+                
+                # Check each model field
+                missing_columns = []
+                for field in model._meta.fields:
+                    if field.column not in existing_columns:
+                        missing_columns.append(field)
+                
+                if missing_columns:
+                    schema_fixes_needed = True
+                    print(f'\\n⚠️  Table {table_name} missing columns:')
+                    
+                    for field in missing_columns:
+                        print(f'   - {field.column} ({field.__class__.__name__})')
+                        
+                        # Use Django's schema editor to add the missing column
+                        try:
+                            with connection.schema_editor() as schema_editor:
+                                schema_editor.add_field(model, field)
+                            print(f'   ✓ Added column {field.column}')
+                        except Exception as e:
+                            print(f'   ✗ Failed to add {field.column}: {e}')
+                            
+                            # Fallback: try raw SQL for common field types
+                            try:
+                                if hasattr(field, 'default') and field.default is not None:
+                                    if field.__class__.__name__ == 'BooleanField':
+                                        default_val = 'TRUE' if field.default else 'FALSE'
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} BOOLEAN NOT NULL DEFAULT {default_val}')
+                                    elif field.__class__.__name__ in ['CharField', 'TextField']:
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} VARCHAR({field.max_length or 255}) NOT NULL DEFAULT %s', [field.default])
+                                    elif field.__class__.__name__ in ['IntegerField', 'BigIntegerField']:
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} INTEGER NOT NULL DEFAULT %s', [field.default])
+                                    elif field.__class__.__name__ == 'FloatField':
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} REAL NOT NULL DEFAULT %s', [field.default])
+                                    else:
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} TEXT')
+                                else:
+                                    # No default, make it nullable
+                                    if field.__class__.__name__ == 'BooleanField':
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} BOOLEAN')
+                                    else:
+                                        cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {field.column} TEXT')
+                                print(f'   ✓ Added column {field.column} via raw SQL')
+                            except Exception as sql_e:
+                                print(f'   ✗ Raw SQL also failed for {field.column}: {sql_e}')
+                                
+            except Exception as e:
+                print(f'Error checking table {table_name}: {e}')
+
+if not schema_fixes_needed:
+    print('✓ All tables have correct schema')
+else:
+    print('\\n✓ Schema fixes completed')
+
+print('=== Schema verification completed ===')
+"
+    
 elif [ "$FORCE_FAKE" = "true" ]; then
     echo $(date -u) "- FORCE_FAKE=true, marking all migrations as applied"
     python manage.py makemigrations
