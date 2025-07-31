@@ -4,9 +4,11 @@ from datetime import timedelta
 # Base dir path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DEBUG = False if os.getenv('DEBUG') == 'False' else True
+# SECURITY WARNING: DEBUG should be False in production
+DEBUG = True if os.getenv('DEBUG') == 'True' else False
 
-ALLOWED_HOSTS = ["http://localhost:8000", "http://127.0.0.1:8000"]
+# ALLOWED_HOSTS will be overridden in dev/production settings
+ALLOWED_HOSTS = []
 
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 # Application definition
@@ -35,6 +37,8 @@ INSTALLED_APPS_THIRD_PARTIES = [
     'rest_framework',
     'rest_framework.authtoken',
     'rest_framework_simplejwt.token_blacklist',
+    # OAuth2 provider
+    'oauth2_provider',
     # swagger
     'drf_yasg',
     # health check
@@ -148,7 +152,7 @@ CORE_WEBSITE = "https://buildly.io"
 
 # User and Organization configuration
 SUPER_USER_PASSWORD = os.getenv('SUPER_USER_PASSWORD')
-DEFAULT_ORG = os.getenv('DEFAULT_ORG').lower() if os.getenv('DEFAULT_ORG') else None
+DEFAULT_ORG = os.getenv('DEFAULT_ORG', '').lower() if os.getenv('DEFAULT_ORG') else None
 AUTO_APPROVE_USER = False if os.getenv('AUTO_APPROVE_USER') == 'False' else True
 FREE_COUPON_CODE = os.getenv('FREE_COUPON_CODE', '')
 STRIPE_SECRET = os.getenv('STRIPE_SECRET', '')
@@ -175,4 +179,16 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     # Add other options as needed
+}
+
+# OAuth2 Provider Settings
+OAUTH2_PROVIDER = {
+    'SCOPES': {
+        'read': 'Read scope',
+        'write': 'Write scope',
+    },
+    'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,
+    'REFRESH_TOKEN_EXPIRE_SECONDS': 86400,
+    'AUTHORIZATION_CODE_EXPIRE_SECONDS': 600,
+    'ROTATE_REFRESH_TOKEN': True,
 }

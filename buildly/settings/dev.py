@@ -29,10 +29,8 @@ DATABASES = {
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-# Security
-
-
-ALLOWED_HOSTS = ["http://localhost:8000", "http://127.0.0.1:8000"]
+# Security - Allow localhost and 127.0.0.1 for development
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "localhost:8000", "127.0.0.1:8000"]
 
 # https://docs.djangoproject.com/en/1.11/ref/settings/#secure-proxy-ssl-header
 

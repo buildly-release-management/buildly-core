@@ -42,12 +42,92 @@ To run the webserver (go to 127.0.0.1:8080):
 docker compose up # -d for detached
 ```
 
-User: `admin`
-Password: `admin`.
+### Default Login Credentials
+
+For development environments:
+- **Username**: `admin`
+- **Password**: `admin`
+
+### Authentication
+
+Buildly Core uses OAuth2 for API authentication. The system supports multiple authentication methods:
+
+1. **OAuth2 Token Authentication** - Primary method for API access
+2. **JWT Authentication** - For microservice communication  
+3. **Session Authentication** - For web interface access
+
+#### Frontend Integration
+
+For frontend applications, use the OAuth2 authorization flow:
+
+1. **Register your application** at `/admin/oauth2_provider/application/`
+2. **Configure OAuth2 flow** in your frontend:
+   ```javascript
+   // Example OAuth2 configuration
+   const oauthConfig = {
+     clientId: 'your-client-id',
+     authorizationUrl: 'http://your-buildly-core/o/authorize/',
+     tokenUrl: 'http://your-buildly-core/o/token/',
+     redirectUrl: 'http://your-frontend/callback',
+     scope: 'read write'
+   };
+   ```
+3. **API requests** should include the OAuth2 token:
+   ```javascript
+   headers: {
+     'Authorization': 'Bearer ' + access_token,
+     'Content-Type': 'application/json'
+   }
+   ```
+
+📖 **For detailed frontend integration examples**, see [FRONTEND_AUTH_GUIDE.md](FRONTEND_AUTH_GUIDE.md)
+
+📚 **For comprehensive deployment instructions**, see [DEPLOYMENT.md](DEPLOYMENT.md)
+
+#### API Documentation
+
+Interactive API documentation is available at `/docs/` when the server is running. This provides a complete reference for all available endpoints and authentication methods.
 
 To run the webserver with pdb support:
 
 ```bash
+### Docker (Production)
+
+```bash
+docker run -d \
+  --name buildly-core \
+  -p 8080:8080 \
+  -e DATABASE_ENGINE=postgresql \
+  -e DATABASE_HOST=your-postgres-host \
+  -e DATABASE_NAME=buildly \
+  -e DATABASE_USER=buildly_user \
+  -e DATABASE_PASSWORD=secure_password \
+  -e SECRET_KEY=your-secret-key \
+  -e ALLOWED_HOSTS="yourdomain.com,localhost" \
+  buildly/buildly:latest
+```
+
+### Migration Management
+
+Buildly Core includes intelligent migration handling that automatically detects database state and applies appropriate strategies:
+
+- **Fresh deployments**: Automatically runs initial migrations
+- **Existing databases**: Smart detection with fallback strategies  
+- **Schema conflicts**: Automatic resolution and verification
+- **Production safety**: All migration strategies preserve existing data
+
+Control migration behavior with environment variables:
+```bash
+# For complex migration issues
+-e FORCE_SCHEMA_SYNC=true
+
+# For corrupted migration state  
+-e FORCE_SYNCDB=true
+
+# Skip migrations (read-only containers)
+-e SKIP_MIGRATIONS=true
+```
+
 docker compose run --rm --service-ports buildly
 ```
 
@@ -69,11 +149,94 @@ See `pytest --help` for more options.
 
 ## Deployment
 
-The instructions in the next three subsections [Configure the API authentication](#configure-the-api-authentication), [Generating RSA keys](#generating-rsa-keys), and [Configuration](#configuration) will explain how to configure a Buildly Core instance to have it on a live system.
+Buildly Core supports multiple deployment scenarios with intelligent migration handling. The deployment process automatically detects database state and applies appropriate migration strategies.
+
+### Migration Environment Variables
+
+The following environment variables control the migration behavior:
+
+- **`SKIP_MIGRATIONS=true`** - Skip all migration steps (for read-only containers)
+- **`FORCE_SYNCDB=true`** - Use `--run-syncdb` with schema verification (for corrupted migration state)
+- **`FORCE_FAKE=true`** - Mark all migrations as applied without executing (for manual schema management)  
+- **`FORCE_SCHEMA_SYNC=true`** - Comprehensive schema synchronization with multiple fallback strategies
+- **Default behavior** - Smart migration with automatic detection and fallbacks
+
+### Production Deployment
+
+For production environments, the container automatically:
+
+1. **Waits for database connectivity**
+2. **Detects database state** (empty vs existing)
+3. **Applies appropriate migration strategy**
+4. **Verifies schema integrity** 
+5. **Loads initial data**
+6. **Starts the application server**
+
+### Kubernetes Deployment
+
+Example Kubernetes deployment with migration control:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildly-core
+spec:
+  template:
+    spec:
+      containers:
+      - name: buildly-core
+        image: buildly/buildly:latest
+        env:
+        # Database configuration
+        - name: DATABASE_ENGINE
+          value: "postgresql"
+        - name: DATABASE_HOST
+          value: "postgres-service"
+        # Migration control (optional)
+        - name: FORCE_SCHEMA_SYNC
+          value: "true"  # Use for comprehensive migration handling
+        # OAuth2 configuration
+        - name: OAUTH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: buildly-secrets
+              key: oauth-client-id
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: buildly-secrets
+              key: oauth-client-secret
+```
+
+### Database Migration Troubleshooting
+
+If you encounter migration issues:
+
+1. **For corrupted migration state**: Set `FORCE_SYNCDB=true`
+2. **For complex schema conflicts**: Set `FORCE_SCHEMA_SYNC=true`
+3. **For manual schema management**: Set `FORCE_FAKE=true`
+
+The system includes automatic schema verification and repair for common issues.
 
 ### Configure the API authentication
 
-All clients interact with our API using the OAuth2 protocol. In order to configure it, go to `admin/oauth2_provider/application/` and add a new application there.
+All clients interact with our API using the OAuth2 protocol. In order to configure it:
+
+1. **Access the admin interface** at `/admin/oauth2_provider/application/`
+2. **Create a new application** with these settings:
+   - **Client Type**: `Confidential` (for server-side apps) or `Public` (for SPAs)
+   - **Authorization Grant Type**: `Authorization code` (recommended) or `Client credentials`
+   - **Name**: Your application name
+3. **Note the Client ID and Client Secret** for your frontend application
+4. **Configure allowed redirect URIs** for your frontend
+
+### OAuth2 Application Types
+
+- **Confidential**: For server-side applications that can securely store credentials
+- **Public**: For single-page applications and mobile apps
+- **Authorization Code**: Standard OAuth2 flow with redirect
+- **Client Credentials**: For server-to-server communication
 
 ### Generating RSA keys
 
@@ -101,7 +264,58 @@ $ docker run -e MYVAR1 --env MYVAR2=foo \
 
 ### API Documentation
 
-The API documentation is available at `/docs/`. It provides an interactive interface to explore and test the API endpoints. Ensure that the `drf_yasg` package is installed and properly configured in your settings.
+The API documentation is available at `/docs/` when the server is running. It provides an interactive Swagger/OpenAPI interface to explore and test all API endpoints.
+
+**Features:**
+- **Interactive testing** - Execute API calls directly from the documentation
+- **Authentication support** - OAuth2 token integration for testing authenticated endpoints  
+- **Schema validation** - View request/response schemas and data types
+- **Endpoint filtering** - Search and filter endpoints by tags or operations
+
+**Note:** Ensure proper OAuth2 configuration for full functionality. Some endpoints may require authentication tokens for testing.
+
+### Frontend Integration Guide
+
+#### OAuth2 Flow Implementation
+
+1. **Authorization Request**:
+   ```
+   GET /o/authorize/?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=read+write
+   ```
+
+2. **Token Exchange**:
+   ```javascript
+   POST /o/token/
+   Content-Type: application/x-www-form-urlencoded
+   
+   grant_type=authorization_code&
+   client_id={CLIENT_ID}&
+   client_secret={CLIENT_SECRET}&
+   code={AUTHORIZATION_CODE}&
+   redirect_uri={REDIRECT_URI}
+   ```
+
+3. **API Usage**:
+   ```javascript
+   fetch('/api/endpoint/', {
+     headers: {
+       'Authorization': 'Bearer ' + access_token,
+       'Content-Type': 'application/json'
+     }
+   })
+   ```
+
+#### Token Refresh
+
+```javascript
+POST /o/token/
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&
+client_id={CLIENT_ID}&
+client_secret={CLIENT_SECRET}&
+refresh_token={REFRESH_TOKEN}
+```
 
 The following tables list the configurable parameters of buildly and their default values.
 
@@ -114,7 +328,15 @@ The following tables list the configurable parameters of buildly and their defau
 | `DEFAULT_ORG`                       | The first organization created in the database  | ``                           |
 | `SECRET_KEY`                        | Used to provide cryptographic signing, and should be set to a unique, unpredictable value | None |
 | `SUPER_USER_PASSWORD`               | Used to define the super user password when it's created for the first time | `admin` in Debug mode or None |
-| `AUTO_APPROVE_USER`                 | If approval process is set to auto-approve users can automatically login without admin apprvoal | False |
+| `AUTO_APPROVE_USER`                 | If approval process is set to auto-approve users can automatically login without admin approval | False |
+
+#### Migration Control
+|             Parameter               |            Description             |                    Default                |
+|-------------------------------------|------------------------------------|-------------------------------------------|
+| `SKIP_MIGRATIONS`                   | Skip all migration steps (for read-only containers)  | False      |
+| `FORCE_SYNCDB`                      | Use --run-syncdb with schema verification for corrupted migration state  | False |
+| `FORCE_FAKE`                        | Mark all migrations as applied without executing (for manual schema management)  | False |
+| `FORCE_SCHEMA_SYNC`                 | Comprehensive schema synchronization with multiple fallback strategies | False |
 
 #### Database Connection
 |             Parameter               |            Description             |                    Default                |
